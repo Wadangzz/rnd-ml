@@ -97,13 +97,20 @@ def program_to_actions(prog: Program) -> List[Action]:
 
 
 def _fresh_state(spec) -> BuildState:
-    """한도 없는 재생용 BuildState (라벨링은 탐색 한도에 안 묶임)"""
+    """한도 없는 재생용 BuildState (라벨링은 탐색 한도에 안 묶임)
+
+    timer_presets 포함 — TON 이 학습 후보 집합에서 항상 '경쟁'해야 한다.
+    빼면 TON 은 정답일 때만 후보에 등장 → 망이 "언제 안 쓸지"를 못 배워
+    타이머 허용 탐색에서 TON 점수가 무보정 (tchain 1차 실측: 0.94 고원).
+    PLS 는 allow_pulse=True 로 원래부터 경쟁에 포함 — TON 만 비대칭이었음.
+    """
     big = 10**9
     return BuildState(
         spec,
         max_actions=big,
         max_stack=big,
         max_rungs=big,
+        timer_presets=(2, 3),
         allow_pulse=True,
         allow_setrst=True,
         max_timers=big,

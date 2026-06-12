@@ -113,5 +113,5 @@ if __name__ == '__main__':
         f'{ev.found_at:,}회 발견' if ev.found_at else f'실패 (acc {ev.best_acc:.3f})'
       )
       print(f'  {name:<12} seed{s}: {stat}', flush=True)
-      if ev.found_at and ev.best_prog:
+      if ev.best_prog:  # 실패 시에도 고원 원형 진단용으로 출력
         print(program_str(ev.best_prog))
