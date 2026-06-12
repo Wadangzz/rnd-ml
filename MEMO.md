@@ -59,4 +59,6 @@ docs/ 에 래더 자동 생성 R&D 3파일: `ladder_ir.py` (IR v0 조합논리) 
 
 **확정 레시피 (Phase 2 결착):** ① featurizer v3.1 (스펙 역할 + 지연 — 이름→역할 재인덱싱) ② 변형 커리큘럼 (같은 모티프 배정 순열, canonical 제외. '같은 과제 다른 해'는 역효과) ③ 학습/추론 후보 정합 (TON 상시 경쟁) ④ prior 는 롤아웃에 (운반체), PUCT 는 좋은 prior 증폭기 ⑤ 규율: 200k/acc==1.0/3시드/holdout.
 
-**다음 단계 (NEXT.md 동기화):** ① **통합 회귀 프로브** — 단일 prior 로 seq3+seq4+tchain3 동시 발견 = "건바이건 아닌 누적" 박제 (간섭 발견 시 그것대로 연구 대상) ② 실전 모티프 (actuator 패밀리 변형, 알람, `manual/create_*` 조사) ③ 길이 외삽 / 스케일 캡 / `evaluate()` 가속 / 디리클레 ④ 장기: 학습형 스펙 인코더 → CEGIS → 타임차트 UI. ML 환경 = WSL `~/rnd-ml` (uv, backend 무오염). 코드/일지 정본 = `~/rnd-ml` git (MEMO.md 스냅샷 동봉). 관련: [[project-ladder-builder-orthogonal]]
+**통합 회귀 프로브 — 누적 증명 완결 (2026-06-12 밤 7, 1일차 피날레):** `unified_probe.py` — 단일 prior (45과제 919라벨: 7 ref + 래치 변형 2/3/4단 + 타이머 변형 2/3단, **세 표적 라벨 전부 제외**) 로 **seq3 (238/17/1,013) + seq4 (21/1/1) + tchain3 (17/143/13,038) 9/9 발견.** 한 가중치가 세 관용구 동시 보유, 모티프 간 간섭 탈락 없음 — "건바이건 아닌 누적" 데이터 박제. seq3 seed0 이 `(X2·Y1)+(Y2·X3/)` 인수분해 변주 발명 (누적 3건째). tchain3 seed0 은 전용 prior(84회)보다 빠른 17회. **분류 정리: 현재 = MCTS + BC + ExIt 1회전 (좁은 의미 RL 아직 아님 — ExIt 다회전 상시화 + value network 가 RL 본체, AlphaZero 분류 기준).**
+
+**다음 단계 (NEXT.md 동기화):** ① ExIt 상시화 (다회전 자동 루프 = RL 본체 진입) + value network ② 실전 모티프 (actuator 패밀리 변형, 알람, `manual/create_*` 조사) ③ 길이 외삽 / 스케일 캡 / `evaluate()` 가속 / 디리클레 ④ 장기: 학습형 스펙 인코더 → CEGIS → 타임차트 UI. ML 환경 = WSL `~/rnd-ml` (uv, backend 무오염). 코드/일지 정본 = `~/rnd-ml` git (MEMO.md 스냅샷 동봉, 구조 = `ladder/` + `experiments/` + `tools/`). 관련: [[project-ladder-builder-orthogonal]]
