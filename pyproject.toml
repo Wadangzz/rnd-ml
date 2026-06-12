@@ -1,0 +1,78 @@
+[project]
+name = "rnd-ml"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "matplotlib>=3.10.9",
+    "numpy>=2.4.6",
+    "torch>=2.12.0",
+]
+
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[tool.yamlfix]
+allow_duplicate_keys = false
+line_length = true
+none_representation = 'null'
+preserve_quotes = true
+quote_basic_values = false
+
+[tool.ruff]
+line-length = 80 # for lint
+indent-width = 2
+# target-version = "py311"
+
+[tool.ruff.lint.pycodestyle]
+max-line-length = 80 # for format
+
+[tool.ruff.lint]
+# line-length = 88 # don't use in tool.ruff.lint
+# - E: pycodestyle errors (PEP 8 style errors)
+# - F: Pyflakes (logical errors, unused imports, etc.)
+# - I: isort (import sorting)
+# - UP: pyupgrade (suggests syntax upgrades for newer Python versions)
+# - B: flake8-bugbear (likely bugs and design problems)
+select = ["E", "F", "UP", "B", "I"]
+ignore = [
+  # "E501", # Ignore line length errors if desired 
+  "B008",
+  "F401", # Ignore unused imports
+  "F405",
+  "F403"
+]
+
+[tool.ruff.format]
+# 3. 따옴표 스타일 (Prettier: singleQuote: true)
+# Python 포맷터(Black) 기본값은 double이지만, 요청대로 single로 변경합니다.
+quote-style = "single"
+
+# 4. 탭 사용 여부 (Prettier: useTabs: false)
+indent-style = "space"
+
+# 5. 줄바꿈 문자 (Prettier: endOfLine: "lf")
+line-ending = "lf"
+
+# 6. 후행 콤마 (Prettier: trailingComma: "all")
+# Ruff는 기본적으로 후행 콤마를 유지하거나 추가하는 것을 선호합니다.
+skip-magic-trailing-comma = false
+
+# (옵션) 독스트링 내 코드 예제도 포맷팅
+docstring-code-format = true
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.pyright]
+reportMissingImports = "none"
+reportMissingModuleSource = "none"
+reportAttributeAccessIssue = "none"
+reportArgumentType = "none"
+# Settings migrated from .vscode/settings.json
+typeCheckingMode = "basic"
+autoSearchPaths = true
+exclude = ["**/node_modules", "**/__pycache__"]
+reportUnusedImport = "information"

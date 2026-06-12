@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>탐색 기반 래더 합성 — 이론 배경 (알파고에서 빌려온 아이디어)</title>
+<style>
+  :root{
+    --ink:#1b1f2a; --sub:#5b6473; --line:#e6e2d8; --bg:#fbfaf7; --card:#ffffff;
+    --blue:#2563eb; --red:#dc2626; --green:#0f9d6b; --purple:#7c3aed; --amber:#d97706;
+    --mono:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,'Segoe UI','Malgun Gothic',sans-serif;
+    line-height:1.72;font-size:16.5px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:880px;margin:0 auto;padding:0 24px 120px}
+  header.hero{padding:64px 24px 40px;max-width:880px;margin:0 auto}
+  .kicker{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--blue);font-weight:700}
+  h1{font-size:34px;line-height:1.25;margin:.4em 0 .3em;letter-spacing:-.01em}
+  .lede{font-size:18px;color:var(--sub);max-width:62ch}
+  h2{font-size:25px;margin:2.6em 0 .2em;letter-spacing:-.01em;display:flex;align-items:baseline;gap:.55em}
+  h2 .n{font-size:14px;font-weight:700;color:#fff;background:var(--ink);
+    border-radius:7px;padding:.18em .5em;letter-spacing:0;flex:none;transform:translateY(-3px)}
+  h3{font-size:18.5px;margin:1.8em 0 .1em}
+  p{margin:.7em 0}
+  code{font-family:var(--mono);font-size:.9em;background:#f1efe9;border:1px solid var(--line);
+    border-radius:5px;padding:.06em .35em}
+  a{color:var(--blue)}
+  .sub{color:var(--sub)}
+  hr{border:0;border-top:1px solid var(--line);margin:3em 0}
+
+  figure{margin:1.8em 0;background:var(--card);border:1px solid var(--line);
+    border-radius:14px;padding:22px 22px 14px;box-shadow:0 1px 0 rgba(0,0,0,.02)}
+  figure svg{display:block;width:100%;height:auto}
+  figcaption{font-size:13.5px;color:var(--sub);margin-top:12px;text-align:center}
+
+  .callout{border-radius:12px;padding:16px 18px;margin:1.4em 0;border:1px solid;font-size:15.5px}
+  .callout .tag{font-weight:700;font-size:12.5px;letter-spacing:.06em;text-transform:uppercase;display:block;margin-bottom:.3em}
+  .c-key{background:#eafaf2;border-color:#bfe9d4;color:#0a5e41}
+  .c-key .tag{color:var(--green)}
+  .c-warn{background:#fef6ec;border-color:#f6dcb6;color:#7a4d09}
+  .c-warn .tag{color:var(--amber)}
+  .c-note{background:#eef3fe;border-color:#cdddfb;color:#1c3f86}
+  .c-note .tag{color:var(--blue)}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:1.4em 0}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .panel h4{margin:.1em 0 .4em;font-size:15.5px}
+  .panel.bad{border-color:#f1c7c4;background:#fdf3f2}
+  .panel.good{border-color:#bfe4cf;background:#f1fbf6}
+  .panel.bad h4{color:var(--red)} .panel.good h4{color:var(--green)}
+  .panel ul{margin:.3em 0 .1em;padding-left:1.1em} .panel li{margin:.2em 0;font-size:14.5px}
+
+  pre.mono{font-family:var(--mono);font-size:13px;line-height:1.5;background:#1b1f2a;color:#e8eaf0;
+    border-radius:10px;padding:14px 16px;overflow-x:auto;margin:1.2em 0}
+  pre.mono .dim{color:#8a93a6} pre.mono .hi{color:#7fd1a8} pre.mono .hr{color:#f1a3a0} pre.mono .hb{color:#8fb8ff}
+
+  table.heat{width:100%;border-collapse:collapse;margin:1.2em 0;font-size:14px}
+  table.heat th,table.heat td{border:1px solid var(--line);padding:7px 9px;text-align:center}
+  table.heat th{background:#f3f1ea;font-weight:700}
+  table.heat td.t{text-align:left;font-weight:600}
+  .cell{display:inline-block;width:100%;border-radius:5px;padding:2px 0;font-size:12.5px;font-weight:700}
+  .s-ok{background:#cdeedd;color:#0a5e41} .s-mid{background:#fbe7c2;color:#7a4d09} .s-no{background:#f6cfcb;color:#8a2018}
+
+  .formula{font-family:var(--mono);background:var(--card);border:1px solid var(--line);
+    border-radius:12px;padding:18px 20px;margin:1.2em 0;font-size:15px;text-align:center;overflow-x:auto}
+  .formula .big{font-size:19px}
+  .formula .lab{color:var(--blue);font-size:12px}
+  .formula .labr{color:var(--red);font-size:12px}
+
+  .toc{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 20px;margin:1.6em 0}
+  .toc ol{margin:.2em 0;padding-left:1.3em} .toc li{margin:.18em 0}
+  .toc a{text-decoration:none}
+  .reflist{font-size:14.5px} .reflist li{margin:.5em 0}
+  .foot{margin-top:4em;padding-top:1.4em;border-top:1px solid var(--line);font-size:13.5px;color:var(--sub)}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="kicker">Synex R&amp;D · 래더 자동 생성</div>
+  <h1>탐색으로 회로를 “찾는다”<br>— 알파고에서 빌려온 아이디어</h1>
+  <p class="lede">래더 프로그램을 LLM에게 “생성”시키는 대신, <b>원하는 동작(스펙)만 주면
+  컴퓨터가 탐색으로 회로를 찾아내게</b> 하는 접근의 이론 배경. 프로그램 합성 ·
+  몬테카를로 트리 탐색 · 정책망 prior · 반례 유도 합성을, 우리 코드
+  (<code>BuildState</code>, <code>evaluate</code>, GP, seq3 경계)에 직접 연결해 정리.</p>
+</header>
+
+<div class="wrap">
+
+<div class="toc">
+  <b>목차</b>
+  <ol>
+    <li><a href="#why">왜 LLM 생성이 아니라 탐색인가</a></li>
+    <li><a href="#synth">프로그램 합성 — “예시로부터 프로그램”</a></li>
+    <li><a href="#game">탐색을 게임으로 — 회로 짓기 MDP</a></li>
+    <li><a href="#mcts">알파고 계보 ① 몬테카를로 트리 탐색(MCTS)</a></li>
+    <li><a href="#prior">알파고 계보 ② 정책망 prior와 PUCT</a></li>
+    <li><a href="#labels">라벨이 공짜인 이유 — self-play 플라이휠</a></li>
+    <li><a href="#gp">또 하나의 탐색 — 유전 프로그래밍(GP)</a></li>
+    <li><a href="#cegis">스펙이 정답의 경계 — CEGIS</a></li>
+    <li><a href="#where">우리 위치 — 난이도 사다리와 경계</a></li>
+    <li><a href="#related">관련 연구 — 우리가 비운 틈</a></li>
+    <li><a href="#status">현재 위치 — “You are here” 로드맵</a></li>
+    <li><a href="#read">용어집 &amp; 더 읽을거리</a></li>
+  </ol>
+</div>
+
+<!-- ============================================================ 1 -->
+<h2 id="why"><span class="n">1</span> 왜 LLM 생성이 아니라 탐색인가</h2>
+
+<p>“LLM에게 래더를 짜 달라고 한다”는 접근의 근본 문제는 능력이 아니라 <b>구조</b>입니다.
+LLM은 학습 데이터의 패턴을 <i>모방</i>해 그럴듯한 출력을 냅니다. 하지만 산업 제어 회로는
+“그럴듯함”이 아니라 <b>정확히 그 동작이어야 함</b>이 요구됩니다. 한 스캔만 어긋나도
+설비가 오작동합니다. LLM 출력에는 그것이 맞는지 보장하는 장치가 없습니다.</p>
+
+<p>핵심 통찰은 이 문제에 <b>공짜 채점기(verifier)</b>가 있다는 것입니다. 후보 회로를
+시뮬레이터(<code>evaluate()</code>)에 넣으면 스펙과 맞는지 즉시 0/1로 나옵니다.
+채점이 공짜라면, 문제는 “생성”이 아니라 <b>“채점기를 통과하는 것을 찾는 탐색”</b>이 됩니다.</p>
+
+<figure>
+<svg viewBox="0 0 820 250" font-family="-apple-system,'Segoe UI',sans-serif">
+  <!-- LLM path -->
+  <text x="20" y="28" font-size="14" font-weight="700" fill="#dc2626">LLM 생성 (검증 없음)</text>
+  <rect x="20" y="42" width="120" height="44" rx="8" fill="#fff" stroke="#e6e2d8"/>
+  <text x="80" y="69" font-size="13" text-anchor="middle">자연어 요청</text>
+  <line x1="140" y1="64" x2="186" y2="64" stroke="#9aa1ad" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="190" y="42" width="120" height="44" rx="8" fill="#1b1f2a"/>
+  <text x="250" y="63" font-size="12.5" text-anchor="middle" fill="#fff">LLM</text>
+  <text x="250" y="78" font-size="10.5" text-anchor="middle" fill="#8a93a6">블랙박스</text>
+  <line x1="310" y1="64" x2="356" y2="64" stroke="#9aa1ad" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="360" y="42" width="120" height="44" rx="8" fill="#fff" stroke="#e6e2d8"/>
+  <text x="420" y="69" font-size="13" text-anchor="middle">회로(추정)</text>
+  <text x="520" y="60" font-size="26" fill="#dc2626">?</text>
+  <text x="545" y="60" font-size="13" fill="#7a2018">맞는지 보장 없음</text>
+  <text x="545" y="78" font-size="11.5" fill="#b06a64">환각 · 미검증 · 재현성 ↓</text>
+
+  <!-- Search path -->
+  <text x="20" y="138" font-size="14" font-weight="700" fill="#2563eb">탐색 + 검증 (보장 있음)</text>
+  <rect x="20" y="152" width="120" height="44" rx="8" fill="#fff" stroke="#e6e2d8"/>
+  <text x="80" y="173" font-size="13" text-anchor="middle">스펙</text>
+  <text x="80" y="188" font-size="10.5" text-anchor="middle" fill="#8a93a6">타임차트</text>
+  <line x1="140" y1="174" x2="186" y2="174" stroke="#9aa1ad" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="190" y="146" width="200" height="58" rx="10" fill="#eef3fe" stroke="#cdddfb"/>
+  <text x="290" y="170" font-size="13" text-anchor="middle" fill="#1c3f86" font-weight="700">생성 ⇄ 채점 루프</text>
+  <text x="290" y="190" font-size="11.5" text-anchor="middle" fill="#3a5ca8">후보 만들고 evaluate로 거름</text>
+  <line x1="390" y1="174" x2="436" y2="174" stroke="#9aa1ad" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="440" y="152" width="120" height="44" rx="8" fill="#f1fbf6" stroke="#bfe4cf"/>
+  <text x="500" y="179" font-size="13" text-anchor="middle" fill="#0a5e41">회로 ✓</text>
+  <text x="585" y="170" font-size="13" fill="#0a5e41" font-weight="700">스펙에 대해 증명됨</text>
+  <text x="585" y="188" font-size="11.5" fill="#3a8a68">못 찾으면 “못 찾음”을 안다</text>
+  <defs><marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+    <path d="M0,0 L8,4.5 L0,9 z" fill="#9aa1ad"/></marker></defs>
+</svg>
+<figcaption>같은 신경망이라도 <b>어디에 두느냐</b>가 갈린다. 출력단(생성)에 두면 미검증, 탐색 내부(prior)에 두면 검증이 보장을 지킨다.</figcaption>
+</figure>
+
+<div class="callout c-key">
+  <span class="tag">핵심</span>
+  LLM이 나쁜 게 아니라 <b>위치가 문제</b>다. 알파고도 신경망을 쓴다 — 다만 “수를 직접 출력”하는 게 아니라
+  “어느 수가 유망한지 <b>제안</b>”하고, 최종 판단은 탐색과 게임 규칙(=검증기)이 한다. 이 문서는 그 구조를
+  래더 합성에 옮기는 이론이다.
+</div>
+
+<!-- ============================================================ 2 -->
+<h2 id="synth"><span class="n">2</span> 프로그램 합성 — “예시로부터 프로그램”</h2>
+
+<p><b>프로그램 합성(program synthesis)</b>은 “명세를 만족하는 프로그램을 자동으로
+구성”하는 분야입니다. 우리가 쓰는 방식은 그중 <b>귀납적 합성(inductive synthesis)</b> —
+입출력 예시(여기서는 <b>타임차트</b>: 스캔별 입력→기대 출력)로부터 프로그램을 역으로
+찾는 것입니다. 엑셀 자동완성(Flash Fill)이 “예시 몇 개 → 문자열 변환 프로그램”을 뽑는 것과
+같은 계열입니다.</p>
+
+<p>합성기는 세 부품으로 분해됩니다. 우리 파일과 1:1로 대응합니다.</p>
+
+<figure>
+<svg viewBox="0 0 820 188" font-family="-apple-system,'Segoe UI',sans-serif">
+  <rect x="20" y="30" width="240" height="120" rx="12" fill="#fff" stroke="#e6e2d8"/>
+  <text x="140" y="54" font-size="14" text-anchor="middle" font-weight="700" fill="#d97706">① 스펙 언어</text>
+  <text x="140" y="76" font-size="12" text-anchor="middle">“정답”을 정의</text>
+  <text x="140" y="98" font-size="11.5" text-anchor="middle" fill="#5b6473">타임차트 시나리오</text>
+  <text x="140" y="116" font-size="11.5" text-anchor="middle" fill="#5b6473">+ don't-care + invariant</text>
+  <text x="140" y="140" font-size="11" text-anchor="middle" fill="#9aa1ad">ladder_search.py</text>
+
+  <rect x="290" y="30" width="240" height="120" rx="12" fill="#fff" stroke="#e6e2d8"/>
+  <text x="410" y="54" font-size="14" text-anchor="middle" font-weight="700" fill="#0f9d6b">② 검증기</text>
+  <text x="410" y="76" font-size="12" text-anchor="middle">후보를 “채점”</text>
+  <text x="410" y="98" font-size="11.5" text-anchor="middle" fill="#5b6473">스캔 단위 PLC 실행</text>
+  <text x="410" y="116" font-size="11.5" text-anchor="middle" fill="#5b6473">일치율 · 위반 산출</text>
+  <text x="410" y="140" font-size="11" text-anchor="middle" fill="#9aa1ad">ladder_sim.py · evaluate()</text>
+
+  <rect x="560" y="30" width="240" height="120" rx="12" fill="#fff" stroke="#e6e2d8"/>
+  <text x="680" y="54" font-size="14" text-anchor="middle" font-weight="700" fill="#2563eb">③ 탐색기</text>
+  <text x="680" y="76" font-size="12" text-anchor="middle">후보를 “생성”</text>
+  <text x="680" y="98" font-size="11.5" text-anchor="middle" fill="#5b6473">random / MCTS / GP</text>
+  <text x="680" y="116" font-size="11.5" text-anchor="middle" fill="#5b6473">채점기를 통과할 때까지</text>
+  <text x="680" y="140" font-size="11" text-anchor="middle" fill="#9aa1ad">ladder_mcts · ladder_gp</text>
+</svg>
+<figcaption>합성기 = 스펙 언어 × 검증기 × 탐색기. 셋 다 우리 R&amp;D 폴더에 구현돼 있다.</figcaption>
+</figure>
+
+<div class="callout c-warn">
+  <span class="tag">함정</span>
+  합성의 절반은 <b>스펙 언어 설계</b>다. 너무 빡빡하게 적으면(과잉명세) 구현 부산물까지 박제돼 멀쩡한
+  대안 회로가 감점되고, 너무 느슨하면(과소명세) 의도와 다른 꼼수 회로가 통과한다. 우리는 전자를
+  <code>don't-care</code> 마스킹으로, 후자를 <code>invariant</code>·퇴화 가드로 막는다.
+  (8장의 actuator 반례가 후자의 실물.)
+</div>
+
+<!-- ============================================================ 3 -->
+<h2 id="game"><span class="n">3</span> 탐색을 게임으로 — 회로 짓기 MDP</h2>
+
+<p>탐색을 알파고식으로 다루려면 먼저 “회로 만들기”를 <b>한 수씩 두는 게임</b>으로
+바꿔야 합니다. 강화학습 용어로는 <b>마르코프 결정 과정(MDP)</b>입니다. 우리
+<code>BuildState</code>가 정확히 이 게임판입니다.</p>
+
+<div class="grid2">
+  <div class="panel">
+    <h4>상태 (state)</h4>
+    <p style="font-size:14.5px;margin:.2em 0">지금까지 둔 액션열 = 부분 완성 회로.
+    스택에 쌓인 논리 노드 + 확정된 rung들.</p>
+  </div>
+  <div class="panel">
+    <h4>액션 (action)</h4>
+    <ul>
+      <li><code>PUSH(dev,모드)</code> 접점을 스택에</li>
+      <li><code>AND / OR</code> 스택 위 2개를 묶기</li>
+      <li><code>TON / PLS</code> 타이머·펄스로 감싸기</li>
+      <li><code>EMIT(coil)</code> rung 확정</li>
+      <li><code>DONE</code> 완성 선언</li>
+    </ul>
+  </div>
+</div>
+
+<p>한 수를 둘 때마다 회로가 한 조각 자랍니다. <code>DONE</code>을 두면 완성된 회로가
+검증기로 가고 그 점수가 <b>보상</b>이 됩니다. 그러면 “좋은 회로 찾기”가
+“높은 보상으로 끝나는 수순 찾기”, 즉 <b>게임 트리 탐색</b>이 됩니다.</p>
+
+<figure>
+<svg viewBox="0 0 820 260" font-family="-apple-system,'Segoe UI',sans-serif">
+  <!-- root -->
+  <circle cx="410" cy="34" r="16" fill="#1b1f2a"/>
+  <text x="410" y="39" font-size="11" text-anchor="middle" fill="#fff">∅</text>
+  <!-- level1 -->
+  <g stroke="#cfd4dd" stroke-width="1.5">
+    <line x1="410" y1="50" x2="170" y2="92"/><line x1="410" y1="50" x2="330" y2="92"/>
+    <line x1="410" y1="50" x2="490" y2="92"/><line x1="410" y1="50" x2="650" y2="92"/>
+  </g>
+  <g font-size="10.5" text-anchor="middle">
+    <rect x="120" y="92" width="100" height="26" rx="6" fill="#eef3fe" stroke="#cdddfb"/><text x="170" y="109">PUSH X0</text>
+    <rect x="282" y="92" width="96" height="26" rx="6" fill="#eef3fe" stroke="#cdddfb"/><text x="330" y="109">PUSH Y0</text>
+    <rect x="446" y="92" width="88" height="26" rx="6" fill="#eef3fe" stroke="#cdddfb"/><text x="490" y="109">PUSH X1/</text>
+    <text x="650" y="109" fill="#9aa1ad">… (분기 ~10+)</text>
+  </g>
+  <!-- level2 from PUSH Y0 -->
+  <g stroke="#cfd4dd" stroke-width="1.5">
+    <line x1="330" y1="118" x2="250" y2="158"/><line x1="330" y1="118" x2="360" y2="158"/><line x1="330" y1="118" x2="450" y2="158"/>
+  </g>
+  <g font-size="10.5" text-anchor="middle">
+    <rect x="206" y="158" width="88" height="26" rx="6" fill="#fff" stroke="#e6e2d8"/><text x="250" y="175">PUSH X1/</text>
+    <rect x="320" y="158" width="80" height="26" rx="6" fill="#fff" stroke="#e6e2d8"/><text x="360" y="175">AND</text>
+    <rect x="410" y="158" width="80" height="26" rx="6" fill="#fff" stroke="#e6e2d8"/><text x="450" y="175">OR</text>
+  </g>
+  <!-- deep -->
+  <g stroke="#cfd4dd" stroke-width="1.5" stroke-dasharray="3 3">
+    <line x1="250" y1="184" x2="250" y2="212"/><line x1="360" y1="184" x2="360" y2="212"/><line x1="450" y1="184" x2="450" y2="212"/>
+  </g>
+  <g font-size="10.5" text-anchor="middle" fill="#5b6473">
+    <text x="250" y="226">⋮</text><text x="360" y="226">⋮</text><text x="450" y="226">⋮</text>
+  </g>
+  <rect x="556" y="200" width="150" height="44" rx="9" fill="#f1fbf6" stroke="#bfe4cf"/>
+  <text x="631" y="220" font-size="11.5" text-anchor="middle" fill="#0a5e41">… EMIT Y0 · DONE</text>
+  <text x="631" y="236" font-size="11" text-anchor="middle" fill="#3a8a68">완성 → evaluate = 보상</text>
+  <line x1="450" y1="212" x2="556" y2="222" stroke="#cfd4dd" stroke-width="1.5" stroke-dasharray="3 3"/>
+</svg>
+<figcaption>회로 짓기 게임 트리. 분기 계수 ~10–25, 깊이 ~10–18. self_hold조차 잎이 수만 개 — 전수 탐색은 불가능하다.</figcaption>
+</figure>
+
+<p>여기서 어려움이 드러납니다. 분기 <b>b</b> × 깊이 <b>d</b>면 잎이 <b>b<sup>d</sup></b>개 —
+조합 폭발입니다. seq3(크기 22, 18수)는 사실상 무한합니다. 그래서 “똑똑하게 어디를 팔지”가
+전부이고, 그게 다음 장의 MCTS입니다.</p>
+
+<!-- ============================================================ 4 -->
+<h2 id="mcts"><span class="n">4</span> 알파고 계보 ① 몬테카를로 트리 탐색(MCTS)</h2>
+
+<p>전수 탐색이 불가능할 때, MCTS는 <b>유망한 가지에 예산을 몰아주는</b> 방법입니다.
+무작위 시뮬레이션(롤아웃)으로 가지의 가치를 가늠하고, 좋아 보이는 곳을 더 깊이 팝니다.
+네 단계를 예산이 다할 때까지 반복합니다.</p>
+
+<figure>
+<svg viewBox="0 0 820 210" font-family="-apple-system,'Segoe UI',sans-serif" font-size="11">
+  <g text-anchor="middle">
+  <!-- 1 select -->
+  <text x="110" y="22" font-weight="700" fill="#2563eb">① 선택</text>
+  <circle cx="110" cy="46" r="9" fill="#1b1f2a"/>
+  <line x1="110" y1="55" x2="80" y2="84" stroke="#2563eb" stroke-width="2.5"/>
+  <line x1="110" y1="55" x2="140" y2="84" stroke="#cfd4dd" stroke-width="1.5"/>
+  <circle cx="80" cy="92" r="9" fill="#2563eb"/><circle cx="140" cy="92" r="9" fill="#fff" stroke="#cfd4dd"/>
+  <line x1="80" y1="101" x2="70" y2="128" stroke="#2563eb" stroke-width="2.5"/>
+  <circle cx="70" cy="136" r="9" fill="#2563eb"/>
+  <text x="110" y="172" fill="#5b6473">UCB로 유망</text>
+  <text x="110" y="187" fill="#5b6473">가지 따라 내려감</text>
+
+  <!-- 2 expand -->
+  <text x="290" y="22" font-weight="700" fill="#2563eb">② 확장</text>
+  <circle cx="290" cy="46" r="9" fill="#1b1f2a"/>
+  <line x1="290" y1="55" x2="270" y2="84" stroke="#cfd4dd" stroke-width="1.5"/>
+  <circle cx="270" cy="92" r="9" fill="#2563eb"/>
+  <line x1="270" y1="101" x2="290" y2="128" stroke="#0f9d6b" stroke-width="2.5" stroke-dasharray="4 3"/>
+  <circle cx="290" cy="136" r="10" fill="#eafaf2" stroke="#0f9d6b" stroke-width="2"/>
+  <text x="290" y="172" fill="#5b6473">안 가본 수 하나</text>
+  <text x="290" y="187" fill="#5b6473">새 자식으로</text>
+
+  <!-- 3 rollout -->
+  <text x="500" y="22" font-weight="700" fill="#2563eb">③ 롤아웃</text>
+  <circle cx="500" cy="46" r="9" fill="#1b1f2a"/>
+  <line x1="500" y1="55" x2="490" y2="80" stroke="#cfd4dd" stroke-width="1.5"/>
+  <circle cx="490" cy="88" r="9" fill="#2563eb"/>
+  <path d="M490,97 q-20,24 8,38 q20,12 4,30" stroke="#d97706" stroke-width="2" fill="none" stroke-dasharray="3 3"/>
+  <rect x="476" y="158" width="56" height="22" rx="6" fill="#fef6ec" stroke="#f6dcb6"/>
+  <text x="504" y="173" fill="#7a4d09">점수 R</text>
+  <text x="500" y="196" fill="#5b6473">끝까지 무작위로 둬봄</text>
+
+  <!-- 4 backprop -->
+  <text x="700" y="22" font-weight="700" fill="#2563eb">④ 역전파</text>
+  <circle cx="700" cy="46" r="9" fill="#1b1f2a"/>
+  <line x1="700" y1="55" x2="690" y2="84" stroke="#7c3aed" stroke-width="2.5"/>
+  <circle cx="690" cy="92" r="9" fill="#2563eb"/>
+  <line x1="690" y1="101" x2="700" y2="128" stroke="#7c3aed" stroke-width="2.5"/>
+  <circle cx="700" cy="136" r="9" fill="#2563eb"/>
+  <path d="M712,130 L704,58" stroke="#7c3aed" stroke-width="2" marker-end="url(#up)" fill="none"/>
+  <text x="700" y="172" fill="#5b6473">점수를 경로 위</text>
+  <text x="700" y="187" fill="#5b6473">모든 노드에 반영</text>
+  </g>
+  <defs><marker id="up" markerWidth="9" markerHeight="9" refX="4" refY="1" orient="auto">
+    <path d="M0,8 L4,0 L8,8 z" fill="#7c3aed"/></marker></defs>
+</svg>
+<figcaption>MCTS 한 번의 반복. 무작위 탐색과의 차이는 ④ — 좋은 부분 구조를 <b>기억</b>하고 거기에 다시 예산을 쓴다.</figcaption>
+</figure>
+
+<p>“유망한 가지”를 고르는 공식이 <b>UCB1 / UCT</b>입니다. 이미 좋아 보이는 곳을
+<b>활용</b>하려는 항과, 덜 가본 곳을 <b>탐험</b>하려는 항의 합으로, 둘의 균형을 자동으로
+잡습니다(탐험-활용 딜레마).</p>
+
+<div class="formula">
+  <span class="big">UCB = <span style="color:#0f9d6b">평균보상</span> &nbsp;+&nbsp; <span style="color:#2563eb">c · √( ln N<sub>부모</sub> / n<sub>자식</sub> )</span></span><br>
+  <span class="lab" style="color:#0f9d6b">활용: 지금까지 좋았나</span> &nbsp;&nbsp;&nbsp;
+  <span class="lab">탐험: 덜 가봤나</span>
+</div>
+
+<div class="callout c-warn">
+  <span class="tag">우리 실측</span>
+  <b>순수 MCTS는 우리 문제에서 무작위 탐색에 전패했다.</b> 패인 세 가지: (a) 부분점수만 높은
+  <i>기만적 가지</i>에 예산이 빨려듦, (b) 균등 롤아웃이 <code>PUSH</code>에 지배돼 분포가 나쁨
+  (→ <code>KIND_WEIGHTS</code> 가중 롤아웃으로 일부 완화), (c) 18수짜리 거대 트리에서 얕은
+  앞부분만 기억 — <b>공로 배정(credit assignment) 실패</b>. 순수 UCT만으로는 부족하다는 게
+  바로 알파고가 <b>신경망</b>을 더한 이유다.
+</div>
+
+<!-- ============================================================ 5 -->
+<h2 id="prior"><span class="n">5</span> 알파고 계보 ② 정책망 prior와 PUCT</h2>
+
+<p>알파고의 결정적 한 수는 MCTS에 <b>신경망 두 개</b>를 결합한 것입니다.
+<b>정책망</b>은 “이 상황에서 어느 수가 유망한가”(prior <b>P</b>)를, <b>가치망</b>은 “이 국면이
+얼마나 좋은가”(<b>V</b>)를 즉답합니다. 롤아웃을 끝까지 가지 않아도, 신경망의 직관으로
+탐색을 유망한 가지에 곧장 집중시킵니다. 선택 공식은 UCB에 prior를 곱한 <b>PUCT</b>가 됩니다.</p>
+
+<div class="formula">
+  <span class="big">PUCT = <span style="color:#0f9d6b">Q(s,a)</span>
+   &nbsp;+&nbsp; c · <span style="color:#dc2626">P(s,a)</span> · <span style="color:#2563eb">√N<sub>부모</sub> / (1 + n<sub>a</sub>)</span></span><br>
+  <span class="lab" style="color:#0f9d6b">활용(가치)</span> &nbsp;&nbsp;
+  <span class="labr">정책망 prior — 안 가봐도 “이쪽이 유력”</span> &nbsp;&nbsp;
+  <span class="lab">탐험</span>
+</div>
+
+<p><b>그런데 prior는 우리 코드에 이미 있습니다.</b> <code>ladder_mcts.py</code>의
+<code>KIND_WEIGHTS</code> — 손으로 정한 상수 7개가 바로 <i>고정 prior</i>입니다.
+“신경망 prior 도입”이란 이 표를 <b>학습된 함수</b>로 갈아끼우는 것입니다.</p>
+
+<figure>
+<svg viewBox="0 0 820 200" font-family="-apple-system,'Segoe UI',sans-serif" font-size="11">
+  <text x="20" y="20" font-size="13" font-weight="700">prior의 진화 — 같은 자리, 더 똑똑한 분포</text>
+  <!-- uniform -->
+  <text x="110" y="48" text-anchor="middle" font-weight="700" fill="#9aa1ad">균등 (순수 UCT)</text>
+  <g transform="translate(40,56)">
+    <rect x="0" y="40" width="22" height="40" fill="#cfd4dd"/><rect x="28" y="40" width="22" height="40" fill="#cfd4dd"/>
+    <rect x="56" y="40" width="22" height="40" fill="#cfd4dd"/><rect x="84" y="40" width="22" height="40" fill="#cfd4dd"/>
+    <rect x="112" y="40" width="22" height="40" fill="#cfd4dd"/>
+    <text x="67" y="98" text-anchor="middle" fill="#5b6473">전부 같은 확률</text>
+  </g>
+  <!-- weighted -->
+  <text x="410" y="48" text-anchor="middle" font-weight="700" fill="#d97706">손가중 (KIND_WEIGHTS)</text>
+  <g transform="translate(340,56)">
+    <rect x="0" y="56" width="22" height="24" fill="#f6dcb6"/><rect x="28" y="24" width="22" height="56" fill="#f6dcb6"/>
+    <rect x="56" y="24" width="22" height="56" fill="#f6dcb6"/><rect x="84" y="8" width="22" height="72" fill="#f6dcb6"/>
+    <rect x="112" y="32" width="22" height="48" fill="#f6dcb6"/>
+    <text x="67" y="98" text-anchor="middle" fill="#7a4d09">고정 · 상태/스펙 무시</text>
+  </g>
+  <!-- learned -->
+  <text x="710" y="48" text-anchor="middle" font-weight="700" fill="#2563eb">학습 (신경망 prior)</text>
+  <g transform="translate(640,56)">
+    <rect x="0" y="64" width="22" height="16" fill="#9bc0fb"/><rect x="28" y="14" width="22" height="66" fill="#2563eb"/>
+    <rect x="56" y="44" width="22" height="36" fill="#9bc0fb"/><rect x="84" y="58" width="22" height="22" fill="#9bc0fb"/>
+    <rect x="112" y="50" width="22" height="30" fill="#9bc0fb"/>
+    <text x="67" y="98" text-anchor="middle" fill="#1c3f86">상태+스펙 조건부</text>
+  </g>
+  <text x="410" y="186" text-anchor="middle" font-size="11.5" fill="#5b6473">
+    가로축 = 액션 종류(PUSH/AND/OR/EMIT/…), 세로축 = 둘 확률. 오른쪽으로 갈수록 “지금·이 스펙”에 맞춰 뾰족해진다.</text>
+</svg>
+<figcaption>prior는 새 개념이 아니다. 고정 표(가운데)를 “현재 부분회로 + 목표 타임차트를 보고 다음 수 확률을 내주는 학습 함수”(오른쪽)로 바꾸는 것.</figcaption>
+</figure>
+
+<p>훅도 이미 뚫려 있습니다. <code>mcts_search(rollout_policy=…)</code>에 정책 함수를 주입하고,
+선택 단계 <code>ucb1</code>을 위 PUCT로 바꾸면 됩니다. 남는 질문은 하나 —
+<b>그 신경망을 무슨 데이터로 학습시키나?</b></p>
+
+<!-- ============================================================ 6 -->
+<h2 id="labels"><span class="n">6</span> 라벨이 공짜인 이유 — self-play 플라이휠</h2>
+
+<p>보통 머신러닝에서 데이터셋이 비싼 이유는 <b>사람이 라벨링</b>해야 하기 때문입니다.
+그런데 여기는 그게 통째로 없습니다. <b>검증기가 공짜</b>이기 때문입니다. 라벨이 두 종류인데
+각각 로봇이 만들어 줍니다.</p>
+
+<div class="grid2">
+  <div class="panel good">
+    <h4>“맞느냐?” 라벨 → 시뮬레이터</h4>
+    <p style="font-size:14.5px;margin:.2em 0"><code>evaluate()</code>가 완성 회로의 정답 여부를
+    즉시 0/1로. 바둑의 “이겼나”에 해당. 사람 없음.</p>
+  </div>
+  <div class="panel good">
+    <h4>“다음 수?” 라벨 → 정답 회로 자신</h4>
+    <p style="font-size:14.5px;margin:.2em 0">아는 정답 회로(레퍼런스·GP 해)를 액션열로
+    펴면 매 단계가 (상태→정답수). <code>ladder_decompose.py</code>가 그 공장.</p>
+  </div>
+</div>
+
+<pre class="mono"><span class="dim"># 정답 회로를 후위순회로 펴면 → 각 줄이 학습 라벨 (사람 0)</span>
+정답:  ((X0) + (Y0 * X1/)) -> Y0
+<span class="hb">상태 ∅</span>            → <span class="hi">PUSH X0</span>
+<span class="hb">[X0]</span>             → <span class="hi">PUSH Y0</span>
+<span class="hb">[X0, Y0]</span>         → <span class="hi">PUSH X1/</span>
+<span class="hb">[X0, Y0, X1/]</span>    → <span class="hi">AND</span>
+<span class="hb">[X0, (Y0·X1/)]</span>   → <span class="hi">OR</span>
+<span class="hb">[(X0 + Y0·X1/)]</span>  → <span class="hi">EMIT Y0</span>  → <span class="hi">DONE</span></pre>
+
+<p>여기에 알파고 제로의 마법이 붙습니다. 탐색이 새 해를 찾으면 → 검증기가 공짜로 확인 →
+액션열로 분해해 새 라벨 → 그 라벨로 신경망을 더 똑똑하게 → 더 똑똑한 탐색이 더 어려운 해를
+찾고… <b>돌릴수록 데이터가 늘어나는 자가발전 고리(self-play flywheel)</b>입니다. 사람 기보
+0개로 바둑을 정복한 그 원리입니다.</p>
+
+<figure>
+<svg viewBox="0 0 760 230" font-family="-apple-system,'Segoe UI',sans-serif" font-size="12">
+  <g text-anchor="middle">
+  <rect x="300" y="14" width="160" height="40" rx="10" fill="#eef3fe" stroke="#cdddfb"/>
+  <text x="380" y="33" fill="#1c3f86" font-weight="700">탐색이 새 해 발견</text>
+  <text x="380" y="48" fill="#3a5ca8" font-size="10.5">MCTS+prior / GP</text>
+
+  <rect x="560" y="92" width="160" height="44" rx="10" fill="#f1fbf6" stroke="#bfe4cf"/>
+  <text x="640" y="111" fill="#0a5e41" font-weight="700">검증기가 확인</text>
+  <text x="640" y="126" fill="#3a8a68" font-size="10.5">evaluate (공짜)</text>
+
+  <rect x="300" y="176" width="160" height="44" rx="10" fill="#fff" stroke="#e6e2d8"/>
+  <text x="380" y="195" font-weight="700">액션열로 분해</text>
+  <text x="380" y="210" fill="#5b6473" font-size="10.5">(상태→수) 라벨화</text>
+
+  <rect x="40" y="92" width="160" height="44" rx="10" fill="#f6effd" stroke="#ddc9f5"/>
+  <text x="120" y="111" fill="#5b21b6" font-weight="700">신경망 재학습</text>
+  <text x="120" y="126" fill="#7c3aed" font-size="10.5">prior 갱신</text>
+  </g>
+  <g fill="none" stroke="#9aa1ad" stroke-width="2">
+    <path d="M460,40 q140,6 150,48" marker-end="url(#a2)"/>
+    <path d="M600,136 q-60,60 -150,52" marker-end="url(#a2)"/>
+    <path d="M300,206 q-160,8 -170,-58" marker-end="url(#a2)"/>
+    <path d="M150,92 q60,-66 150,-56" marker-end="url(#a2)"/>
+  </g>
+  <text x="380" y="120" text-anchor="middle" font-size="13" fill="#7c3aed" font-weight="700">self-play</text>
+  <text x="380" y="138" text-anchor="middle" font-size="11" fill="#9aa1ad">돌릴수록 강해짐</text>
+  <defs><marker id="a2" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+    <path d="M0,0 L8,4.5 L0,9 z" fill="#9aa1ad"/></marker></defs>
+</svg>
+<figcaption>self-play 플라이휠. 검증기가 공짜라서 “생성→검증→학습”이 사람 개입 없이 닫힌 고리로 돈다.</figcaption>
+</figure>
+
+<div class="callout c-note">
+  <span class="tag">진짜 숙제</span>
+  무서운 건 라벨링 비용이 아니라 <b>데이터 분포</b>다. 무작위 쓰레기 회로로 학습하면 쓰레기 prior가
+  된다. 학습 분포를 <b>실전 모티프</b>(우리 <code>manual/create_*_ladder</code> 템플릿 — Step 체인,
+  인터로크, 지연정지)로 편향시키는 게 설계의 핵심. 돈이 아니라 생성기 튜닝 문제다.
+</div>
+
+<!-- ============================================================ 7 -->
+<h2 id="gp"><span class="n">7</span> 또 하나의 탐색 — 유전 프로그래밍(GP)</h2>
+
+<p>알파고 노선과 <b>상보적인</b> 다른 탐색 패러다임이 진화 연산입니다. 회로 집단을 두고,
+잘하는 개체를 <b>교차·변이</b>시켜 다음 세대를 만듭니다. 핵심은 <b>rung 단위 교차</b> —
+서로 다른 후보가 반쪽씩 찾은 정답을 합치는 것입니다.</p>
+
+<figure>
+<svg viewBox="0 0 820 150" font-family="-apple-system,'Segoe UI',sans-serif" font-size="12">
+  <rect x="30" y="30" width="200" height="90" rx="10" fill="#fff" stroke="#e6e2d8"/>
+  <text x="130" y="22" text-anchor="middle" font-size="11.5" fill="#5b6473">부모 A</text>
+  <rect x="44" y="44" width="172" height="26" rx="5" fill="#cdeedd"/><text x="130" y="61" text-anchor="middle" font-size="11">Y0 rung ✓ (좋음)</text>
+  <rect x="44" y="80" width="172" height="26" rx="5" fill="#f6cfcb"/><text x="130" y="97" text-anchor="middle" font-size="11">Y1 rung ✗</text>
+
+  <rect x="300" y="30" width="200" height="90" rx="10" fill="#fff" stroke="#e6e2d8"/>
+  <text x="400" y="22" text-anchor="middle" font-size="11.5" fill="#5b6473">부모 B</text>
+  <rect x="314" y="44" width="172" height="26" rx="5" fill="#f6cfcb"/><text x="400" y="61" text-anchor="middle" font-size="11">Y0 rung ✗</text>
+  <rect x="314" y="80" width="172" height="26" rx="5" fill="#cdeedd"/><text x="400" y="97" text-anchor="middle" font-size="11">Y1 rung ✓ (좋음)</text>
+
+  <line x1="510" y1="75" x2="566" y2="75" stroke="#7c3aed" stroke-width="2.5" marker-end="url(#a3)"/>
+  <text x="538" y="66" text-anchor="middle" font-size="11" fill="#7c3aed">교차</text>
+
+  <rect x="580" y="30" width="200" height="90" rx="10" fill="#f6effd" stroke="#ddc9f5"/>
+  <text x="680" y="22" text-anchor="middle" font-size="11.5" fill="#5b21b6">자식 ✓✓</text>
+  <rect x="594" y="44" width="172" height="26" rx="5" fill="#cdeedd"/><text x="680" y="61" text-anchor="middle" font-size="11">Y0 rung ✓</text>
+  <rect x="594" y="80" width="172" height="26" rx="5" fill="#cdeedd"/><text x="680" y="97" text-anchor="middle" font-size="11">Y1 rung ✓</text>
+  <defs><marker id="a3" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+    <path d="M0,0 L8,4.5 L0,9 z" fill="#7c3aed"/></marker></defs>
+</svg>
+<figcaption>rung 교차. “두 rung이 <b>동시에</b> 맞아야 점수가 나는” 과제(interlock)를, 샘플링은 한 번에 둘 다 뽑아야 하지만 교차는 반쪽씩 합쳐 푼다.</figcaption>
+</figure>
+
+<div class="callout c-key">
+  <span class="tag">우리 실측</span>
+  <b>GP가 난이도 사다리의 결정적 과제(interlock·seq2·actuator)를 유일하게 풀었다.</b> 샘플링 기반
+  (무작위·MCTS)이 전패한 “동시 정합” 문제를 building-block 교차가 해결. 다만 GP도 seq3에서
+  무너진다 — 그 지점이 신경망 prior가 정당화되는 경계(9장).
+</div>
+
+<!-- ============================================================ 8 -->
+<h2 id="cegis"><span class="n">8</span> 스펙이 정답의 경계 — CEGIS</h2>
+
+<p>합성기는 <b>당신의 의도</b>가 아니라 <b>당신이 적은 스펙</b>에 대해 정답을 냅니다. 스펙에
+구멍이 있으면, 의도와 다른 꼼수 회로가 당당히 통과합니다. 우리는 이걸 actuator에서 실물로
+목격했습니다.</p>
+
+<pre class="mono"><span class="dim"># actuator: 스펙은 만족하지만 의도(인터로크)와 다른 해</span>
+<span class="dim"># 반례 입력 — Y1(후진) 켜둔 채 X0(전진), X2 미도달:</span>
+스캔3:  레퍼런스 → Y0=<span class="hi">0</span>, Y1=1   <span class="dim">(인터로크가 전진 차단)</span>
+스캔3:  합성 해  → Y0=<span class="hr">1</span>, Y1=1   <span class="hr">(동시 ON — 인터로크 깨짐!)</span></pre>
+
+<p>원인: 이 반례 상태를 스펙의 어떤 시나리오도 밟지 않았고, <code>invariant</code>도 스펙
+시나리오 위에서만 검사되니 위반이 탐지될 기회가 없었습니다. 해법이 <b>CEGIS</b>
+(반례 유도 귀납 합성, Counter-Example-Guided Inductive Synthesis)입니다 — 합성과 검증을
+번갈아 돌리는 고리입니다.</p>
+
+<figure>
+<svg viewBox="0 0 760 180" font-family="-apple-system,'Segoe UI',sans-serif" font-size="12">
+  <rect x="60" y="60" width="180" height="56" rx="12" fill="#eef3fe" stroke="#cdddfb"/>
+  <text x="150" y="84" text-anchor="middle" fill="#1c3f86" font-weight="700">합성기</text>
+  <text x="150" y="102" text-anchor="middle" fill="#3a5ca8" font-size="10.5">현재 스펙 만족하는 해</text>
+
+  <rect x="520" y="60" width="180" height="56" rx="12" fill="#f1fbf6" stroke="#bfe4cf"/>
+  <text x="610" y="84" text-anchor="middle" fill="#0a5e41" font-weight="700">검증기 (fuzzing)</text>
+  <text x="610" y="102" text-anchor="middle" fill="#3a8a68" font-size="10.5">위반하는 입력 찾기</text>
+
+  <path d="M240,80 q140,-44 280,0" fill="none" stroke="#9aa1ad" stroke-width="2" marker-end="url(#a4)"/>
+  <text x="380" y="42" text-anchor="middle" font-size="11.5" fill="#5b6473">후보 해 제출</text>
+  <path d="M520,98 q-140,52 -280,0" fill="none" stroke="#dc2626" stroke-width="2" marker-end="url(#a4r)"/>
+  <text x="380" y="150" text-anchor="middle" font-size="11.5" fill="#b02a20">반례를 새 시나리오로 추가</text>
+
+  <text x="380" y="92" text-anchor="middle" font-size="11" fill="#9aa1ad">반례 없을 때까지 반복</text>
+  <defs>
+    <marker id="a4" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L8,4.5 L0,9 z" fill="#9aa1ad"/></marker>
+    <marker id="a4r" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L8,4.5 L0,9 z" fill="#dc2626"/></marker>
+  </defs>
+</svg>
+<figcaption>CEGIS 고리. 검증기가 “동시 ON 되는 입력” 같은 반례를 자동 발굴 → 스펙에 추가 → 재합성. 그러면 합성기는 인터로크를 <b>넣을 수밖에</b> 없어진다.</figcaption>
+</figure>
+
+<div class="callout c-note">
+  <span class="tag">연결</span>
+  8장 반례를 사람이 손으로 만들었지만, CEGIS는 그걸 <b>자동</b>으로 한다. 우리 <code>invariant</code>를
+  스펙 시나리오에만이 아니라 임의 입력에 fuzzing하면 곧 CEGIS의 검증 쪽이 된다. R&amp;D 다음 단계의
+  장기 목표.
+</div>
+
+<!-- ============================================================ 9 -->
+<h2 id="where"><span class="n">9</span> 우리 위치 — 난이도 사다리와 경계</h2>
+
+<p>이론을 실제로 어디까지 밀었는지가 <b>난이도 사다리</b> 8과제입니다. 과제마다
+“완벽해 발견까지 검증 호출 수”를 네 탐색기로 동일 예산(20만)·3시드 측정합니다.
+무엇이 무엇을 푸느냐가 곧 <b>다음 도구가 정당화되는 경계</b>를 그립니다.</p>
+
+<table class="heat">
+  <tr><th class="t">과제 (크기)</th><th>random</th><th>mcts</th><th>mcts_w</th><th>gp</th><th class="t">난점</th></tr>
+  <tr><td class="t">self_hold (6)</td><td><span class="cell s-ok">✓</span></td><td><span class="cell s-ok">✓</span></td><td><span class="cell s-ok">✓</span></td><td><span class="cell s-ok">✓</span></td><td class="t">조합+피드백</td></tr>
+  <tr><td class="t">one_shot (3)</td><td><span class="cell s-ok">✓</span></td><td><span class="cell s-ok">✓</span></td><td><span class="cell s-ok">✓</span></td><td><span class="cell s-ok">✓</span></td><td class="t">PLS</td></tr>
+  <tr><td class="t">delayed_off (9)</td><td><span class="cell s-ok">✓</span></td><td><span class="cell s-no">✗</span></td><td><span class="cell s-mid">2/3</span></td><td><span class="cell s-ok">✓</span></td><td class="t">TON+자기유지</td></tr>
+  <tr><td class="t">flicker (8)</td><td><span class="cell s-ok">✓</span></td><td><span class="cell s-mid">1/3</span></td><td><span class="cell s-mid">2/3</span></td><td><span class="cell s-ok">✓</span></td><td class="t">TON 2개 교차</td></tr>
+  <tr><td class="t">interlock (8)</td><td><span class="cell s-mid">1/3</span></td><td><span class="cell s-no">✗</span></td><td><span class="cell s-no">✗</span></td><td><span class="cell s-ok">✓</span></td><td class="t">두 rung 동시 정합</td></tr>
+  <tr><td class="t">seq2 (14)</td><td><span class="cell s-no">✗</span></td><td><span class="cell s-no">✗</span></td><td><span class="cell s-no">✗</span></td><td><span class="cell s-ok">✓</span></td><td class="t">래치 체인</td></tr>
+  <tr><td class="t">actuator (14)</td><td><span class="cell s-no">✗</span></td><td><span class="cell s-no">✗</span></td><td><span class="cell s-no">✗</span></td><td><span class="cell s-ok">✓</span></td><td class="t">latch×인터로크</td></tr>
+  <tr><td class="t">seq3 (22)</td><td><span class="cell s-no">✗</span></td><td><span class="cell s-no">✗</span></td><td><span class="cell s-no">✗</span></td><td><span class="cell s-no">✗ .97</span></td><td class="t">3단 래치 — <b>경계</b></td></tr>
+</table>
+
+<p>읽는 법: <b>무작위는 강한 베이스라인</b>이라 크기 ~10까지 대부분 풀립니다.
+<b>GP</b>는 “동시 정합” 과제(interlock·seq2·actuator)를 유일하게 뚫습니다. 그리고
+<b>seq3에서 GP마저 무너집니다</b>(최고 0.973까지 가고도 완성 못 함). 바로 이 지점이
+— 손으로 만든 탐색이 전부 한계에 부딪힌 첫 과제가 — <b>학습된 신경망 prior</b>를
+처음으로 정당화하는 경계입니다.</p>
+
+<figure>
+<svg viewBox="0 0 820 120" font-family="-apple-system,'Segoe UI',sans-serif" font-size="11.5">
+  <line x1="40" y1="60" x2="780" y2="60" stroke="#cfd4dd" stroke-width="2"/>
+  <g text-anchor="middle">
+    <circle cx="150" cy="60" r="6" fill="#0f9d6b"/><text x="150" y="40" fill="#0a5e41">무작위로 충분</text><text x="150" y="86" fill="#5b6473" font-size="10">크기 ≤ 10</text>
+    <circle cx="420" cy="60" r="6" fill="#7c3aed"/><text x="420" y="40" fill="#5b21b6">GP가 정당화</text><text x="420" y="86" fill="#5b6473" font-size="10">동시 정합 (interlock~actuator)</text>
+    <circle cx="680" cy="60" r="7" fill="#dc2626"/><text x="680" y="40" fill="#b02a20" font-weight="700">신경망이 정당화</text><text x="680" y="86" fill="#5b6473" font-size="10">seq3+ (GP 한계)</text>
+  </g>
+  <text x="765" y="64" font-size="16" fill="#9aa1ad">→</text>
+  <text x="40" y="108" font-size="10.5" fill="#9aa1ad">난이도 / 도구 무게 →</text>
+</svg>
+<figcaption>도구 정당화 경계. 각 도구는 “앞 도구가 무너지는 지점”에서만 값을 한다 — 무거운 도구를 성급히 쓰지 않기 위한 측정 규율.</figcaption>
+</figure>
+
+<div class="callout c-key">
+  <span class="tag">결론</span>
+  “LLM에게 짜게 한다”는 출발점을 <b>“검증기를 가진 탐색 문제로 본다”</b>로 바꾸면, 알파고의
+  도구상자(MCTS · 정책망 prior · self-play · CEGIS)가 그대로 들어온다. 우리는 이미 게임판
+  (<code>BuildState</code>) · 검증기(<code>evaluate</code>) · 고정 prior(<code>KIND_WEIGHTS</code>) ·
+  라벨 공장(<code>ladder_decompose</code>)을 갖췄고, seq3가 신경망 prior를 처음으로 정당화하는
+  경계임을 측정으로 확정했다. 다음은 그 prior를 <b>학습</b>시키는 것.
+</div>
+
+<!-- ============================================================ 10 -->
+<h2 id="related"><span class="n">10</span> 관련 연구 (Related Work) — 우리가 비운 틈</h2>
+
+<p>이 접근은 <b>세 분야가 교차</b>하는 지점에 있다. 각 조각은 선행연구가 풍부하지만,
+<b>합쳐진 형태</b> — “알파고식 MCTS+학습 prior를, 공짜 시뮬레이터 검증기를 가진
+래더-짓기 게임에, 난이도 사다리로 벤치마킹” — 은 거의 비어 있다. 갈래별 대표 연구와
+우리와의 차이.</p>
+
+<table class="heat" style="font-size:13.5px;text-align:left">
+  <tr><th class="t" style="width:20%">갈래</th><th class="t" style="width:42%">대표 연구</th><th class="t">우리와의 차이</th></tr>
+  <tr>
+    <td class="t">① PLC 래더 합성<br><span class="sub" style="font-weight:400">(형식 기법)</span></td>
+    <td class="t"><a href="https://www.sciencedirect.com/science/article/abs/pii/S0965997804002017">State-diagram→ladder</a> (2004) · <a href="https://www.mdpi.com/2076-0825/14/5/201">SysML→PLC</a> (2025) · <a href="https://link.springer.com/chapter/10.1007/978-3-540-69100-6_9">Petri net→ladder</a></td>
+    <td class="t">형식 <b>변환</b>만 — 탐색·학습 prior 없음. 우리는 스펙으로부터 <b>탐색</b>해 찾음</td>
+  </tr>
+  <tr>
+    <td class="t">② 스펙→회로 + CEGIS</td>
+    <td class="t"><a href="https://arxiv.org/pdf/1604.06204">Reactive Synthesis from Safety Specs</a> · <a href="https://arxiv.org/pdf/1408.2333">SAT-Based Circuit Synthesis</a></td>
+    <td class="t">SAT/형식 합성 — 우리는 <b>시뮬레이터 검증기 + 탐색</b>. CEGIS는 우리 미래 단계</td>
+  </tr>
+  <tr>
+    <td class="t">③ 신경 유도 / MCTS<br><span class="sub" style="font-weight:400">프로그램 합성</span></td>
+    <td class="t"><a href="https://dl.acm.org/doi/10.1145/3453483.3454080">DreamCoder</a> (PLDI’21) · <a href="https://arxiv.org/pdf/1910.05865">Neural Prog. Synth. by Self-Learning</a> (MCTS+RL) · <a href="https://arxiv.org/pdf/2306.02049">LambdaBeam</a></td>
+    <td class="t"><b>구조적으로 가장 가까움.</b> 단 일반 DSL·코드 대상 — 래더/타임차트 도메인 아님</td>
+  </tr>
+  <tr>
+    <td class="t">④ GP 회로 합성</td>
+    <td class="t"><a href="https://arxiv.org/pdf/1304.2467">Evolutionary Design of Digital Circuits w/ GP</a> · Koza <i>Genetic Programming</i> · Evolvable Hardware</td>
+    <td class="t">조합·아날로그 회로 — 순차 래더(타이머/래치) 아님. 우리 GP track의 토대</td>
+  </tr>
+  <tr>
+    <td class="t">⑤ LLM-for-PLC<br><span class="sub" style="font-weight:400">(2023~24)</span></td>
+    <td class="t">LLM4PLC · <a href="https://arxiv.org/html/2410.22159v3">IEC 61131-3 ST w/ Online Feedback</a> · <a href="https://www.sciencedirect.com/science/article/pii/S2666827025001872">Prompting benchmark</a></td>
+    <td class="t">LLM 생성 + 검증 패치. 우리는 LLM 없이 from scratch. 단 <b>“검증 루프 필요” 결론은 공유</b></td>
+  </tr>
+</table>
+
+<div class="callout c-key">
+  <span class="tag">시사점</span>
+  ⑤가 특히 중요하다 — 업계가 LLM 통째 생성으로 달려가다 <b>하나같이 “복잡한 로직에서 무너진다”며
+  검증기·RL로 회귀</b>하고 있다. “LLM 생성은 잘못된 접근”이라는 직관이 최신 문헌과 정확히 일치한다.
+  우리는 처음부터 검증을 중심에 둔 셈.
+</div>
+
+<!-- ============================================================ 11 -->
+<h2 id="status"><span class="n">11</span> 현재 위치 — “You are here”</h2>
+
+<p>연구 지형 안에서 우리는 <b>“가능성 실증(feasibility) 단계”</b>에 있다. 학습된 prior가
+정당화되는 경계(seq3)를 측정으로 확정했고, 그 prior가 필요로 하는 인프라
+(게임판·검증기·라벨 공장)를 전부 갖췄다. 다만 <b>학습 자체에는 아직 진입하지 않았다.</b></p>
+
+<figure>
+<svg viewBox="0 0 820 175" font-family="-apple-system,'Segoe UI',sans-serif" font-size="11">
+  <line x1="50" y1="78" x2="770" y2="78" stroke="#cfd4dd" stroke-width="2"/>
+  <!-- done nodes -->
+  <g text-anchor="middle">
+    <circle cx="90" cy="78" r="11" fill="#0f9d6b"/><text x="90" y="82" fill="#fff" font-size="11">✓</text>
+    <text x="90" y="106" font-weight="700" fill="#0a5e41">① 인프라</text>
+    <text x="90" y="120" fill="#5b6473" font-size="9.5">게임판·검증기·스펙</text>
+
+    <circle cx="230" cy="78" r="11" fill="#0f9d6b"/><text x="230" y="82" fill="#fff" font-size="11">✓</text>
+    <text x="230" y="106" font-weight="700" fill="#0a5e41">② 고전 탐색</text>
+    <text x="230" y="120" fill="#5b6473" font-size="9.5">베이스라인+경계</text>
+
+    <circle cx="370" cy="78" r="11" fill="#0f9d6b"/><text x="370" y="82" fill="#fff" font-size="11">✓</text>
+    <text x="370" y="106" font-weight="700" fill="#0a5e41">③ 라벨 공장</text>
+    <text x="370" y="120" fill="#5b6473" font-size="9.5">decompose</text>
+
+    <!-- todo nodes -->
+    <circle cx="510" cy="78" r="11" fill="#fff" stroke="#c9b8ec" stroke-width="2.5"/><text x="510" y="82" fill="#7c3aed" font-size="11">4</text>
+    <text x="510" y="106" font-weight="700" fill="#5b21b6">학습 prior</text>
+    <text x="510" y="120" fill="#5b6473" font-size="9.5">모방+PUCT</text>
+
+    <circle cx="630" cy="78" r="11" fill="#fff" stroke="#cfd4dd" stroke-width="2.5"/><text x="630" y="82" fill="#9aa1ad" font-size="11">5</text>
+    <text x="630" y="106" font-weight="700" fill="#5b6473">자기대국·CEGIS</text>
+
+    <circle cx="745" cy="78" r="11" fill="#fff" stroke="#cfd4dd" stroke-width="2.5"/><text x="745" y="82" fill="#9aa1ad" font-size="11">6</text>
+    <text x="745" y="106" font-weight="700" fill="#5b6473">제품</text>
+    <text x="745" y="120" fill="#5b6473" font-size="9.5">타임차트 UI</text>
+  </g>
+  <!-- you are here marker between 3 and 4 -->
+  <g>
+    <path d="M440,40 l10,18 l-20,0 z" fill="#dc2626"/>
+    <rect x="372" y="20" width="136" height="22" rx="6" fill="#dc2626"/>
+    <text x="440" y="35" text-anchor="middle" fill="#fff" font-size="11.5" font-weight="700">현재 — YOU ARE HERE</text>
+    <line x1="440" y1="58" x2="440" y2="78" stroke="#dc2626" stroke-width="2" stroke-dasharray="3 2"/>
+  </g>
+  <rect x="50" y="146" width="320" height="20" rx="6" fill="#eafaf2" stroke="#bfe9d4"/>
+  <text x="210" y="160" text-anchor="middle" font-size="10.5" fill="#0a5e41">완료 — 인프라 + 고전 탐색 베이스라인</text>
+  <rect x="450" y="146" width="320" height="20" rx="6" fill="#f6effd" stroke="#ddc9f5"/>
+  <text x="610" y="160" text-anchor="middle" font-size="10.5" fill="#5b21b6">다음 — 학습 진입 (Phase 2)</text>
+</svg>
+<figcaption>로드맵. Phase 1(인프라+고전 탐색 베이스라인) 완료, <b>학습 prior 진입 직전</b>. ③ 라벨 공장은 막 완성.</figcaption>
+</figure>
+
+<div class="grid2">
+  <div class="panel good">
+    <h4>완료 ✓</h4>
+    <ul>
+      <li>시뮬레이터 검증기 (<code>evaluate</code>)</li>
+      <li>스펙 언어 (타임차트 + don't-care + invariant)</li>
+      <li>게임판 (<code>BuildState</code>)</li>
+      <li>탐색기 4종 (random / mcts / mcts_w / gp)</li>
+      <li>난이도 사다리 8과제 + <b>seq3 경계 확정</b></li>
+      <li>라벨 공장 (<code>ladder_decompose</code>, 94 라벨)</li>
+      <li>래더 렌더러 · 이론 정리</li>
+    </ul>
+  </div>
+  <div class="panel">
+    <h4>다음 →</h4>
+    <ul>
+      <li>분포 편향 생성기 (실전 모티프로)</li>
+      <li>모방학습 정책망 (라벨 → prior)</li>
+      <li>PUCT 통합 (<code>ucb1</code> → prior 가중)</li>
+      <li>최소 검증: seq3에서 mcts_w 추월?</li>
+      <li>자기대국 RL (천장 돌파)</li>
+      <li>CEGIS fuzzing · 제품 통합</li>
+    </ul>
+  </div>
+</div>
+
+<div class="callout c-note">
+  <span class="tag">정직한 자기평가</span>
+  <b>강점:</b> 검증&gt;생성·GP building-block 같은 <i>알려진 결과를 독립 재현</i>했고, “학습이 정당화되는
+  지점(seq3)”을 측정으로 못박았다 — 방법론적으로 탄탄하다. &nbsp;<b>한계:</b> 회로 크기 ≤22의 <i>소규모
+  실증</i>이고, 신경망은 아직 0줄, 실전 운영표준 크기·제품 연결은 미검증. 한 줄로: <b>“알파고 도구상자를
+  래더에 옮길 수 있음을 확인하고, 옮길 준비를 마친” 상태.</b> 다음 한 걸음이 진짜 학습이다.
+</div>
+
+<!-- ============================================================ 12 -->
+<h2 id="read"><span class="n">12</span> 용어집 &amp; 더 읽을거리</h2>
+
+<h3>핵심 용어</h3>
+<table class="heat" style="font-size:14px">
+  <tr><th class="t" style="width:32%">용어</th><th class="t">한 줄 정의 (우리 맥락)</th></tr>
+  <tr><td class="t">프로그램 합성</td><td class="t">스펙을 만족하는 프로그램을 자동 구성. 우리는 입출력 예시로부터의 귀납적 합성</td></tr>
+  <tr><td class="t">검증기 (verifier/oracle)</td><td class="t">후보가 스펙에 맞는지 판정. 우리 <code>evaluate()</code> — 채점이 공짜인 게 모든 것의 출발</td></tr>
+  <tr><td class="t">MDP</td><td class="t">상태·액션·보상으로 정의된 순차 결정 문제. 회로 짓기를 이걸로 모델링(<code>BuildState</code>)</td></tr>
+  <tr><td class="t">MCTS / UCT</td><td class="t">유망한 가지에 예산을 몰아주는 트리 탐색. UCT=UCB 기반 선택</td></tr>
+  <tr><td class="t">탐험-활용 딜레마</td><td class="t">아는 좋은 곳 vs 덜 가본 곳의 균형. UCB의 두 항이 자동 조정</td></tr>
+  <tr><td class="t">정책망 prior (P)</td><td class="t">“이 상황 어느 수가 유망한가”의 사전 분포. 우리 <code>KIND_WEIGHTS</code>의 학습판</td></tr>
+  <tr><td class="t">가치망 (V)</td><td class="t">국면의 좋음을 즉답. 롤아웃을 끝까지 안 가게 함</td></tr>
+  <tr><td class="t">PUCT</td><td class="t">prior P를 곱한 MCTS 선택 공식. 알파고/제로의 심장</td></tr>
+  <tr><td class="t">self-play</td><td class="t">탐색→해→재학습 자가발전 고리. 사람 라벨 0</td></tr>
+  <tr><td class="t">유전 프로그래밍 (GP)</td><td class="t">집단을 교차·변이로 진화. building-block 합성에 강함</td></tr>
+  <tr><td class="t">CEGIS</td><td class="t">합성⇄검증(반례) 루프. 스펙 구멍을 반례로 자동 메움</td></tr>
+  <tr><td class="t">과잉/과소명세</td><td class="t">스펙이 너무 빡빡/느슨. don't-care와 invariant로 양쪽 함정 방어</td></tr>
+</table>
+
+<h3>원전 (개념별 1차 출처)</h3>
+<ul class="reflist">
+  <li><b>AlphaGo</b> — Silver et al., <i>Mastering the game of Go with deep neural networks and tree search</i>, Nature 2016. MCTS + 정책망/가치망 결합의 원전.</li>
+  <li><b>AlphaGo Zero / AlphaZero</b> — Silver et al., Nature 2017 / Science 2018. 사람 데이터 없이 self-play만으로. 우리 “라벨 공짜” 논리의 뿌리.</li>
+  <li><b>MCTS 서베이</b> — Browne et al., <i>A Survey of Monte Carlo Tree Search Methods</i>, IEEE TCIAIG 2012. 네 단계·UCT 변종 총정리.</li>
+  <li><b>UCT</b> — Kocsis &amp; Szepesvári, <i>Bandit based Monte-Carlo Planning</i>, ECML 2006. UCB를 트리에 올린 원전.</li>
+  <li><b>CEGIS / Sketching</b> — Solar-Lezama, <i>Program Synthesis by Sketching</i>, 2008. 반례 유도 합성의 정식화.</li>
+  <li><b>프로그램 합성 개관</b> — Gulwani, Polozov, Singh, <i>Program Synthesis</i> (Foundations &amp; Trends), 2017. 분야 지도.</li>
+  <li><b>학습된 합성</b> — Ellis et al., <i>DreamCoder</i>, PLDI 2021. wake-sleep로 “라이브러리 + 신경 prior”를 함께 학습 — 우리 다음 단계와 가장 가까운 현대 사례.</li>
+  <li><b>유전 프로그래밍</b> — Koza, <i>Genetic Programming</i>, MIT Press 1992. 교차·변이로 프로그램 진화.</li>
+</ul>
+
+<div class="foot">
+  Synex 래더 자동 생성 R&amp;D · 탐색 기반 회로 합성. 코드: <code>docs/reinforced_learning_mcts/</code>
+  (git 비추적, <code>README.md</code>로 진행 관리). 이 문서는 이론 배경 정리용 — 측정·구현 세부는
+  README 실험 일지 참고.
+</div>
+
+</div>
+</body>
+</html>

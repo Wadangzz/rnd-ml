@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# 가상환경
+.venv/
+
+# 학습 산출물 (재학습으로 재생 — uv run ladder_policy.py)
+*.npz
+
+# 차트/이미지 산출물
+charts/
+
+# 에디터
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
