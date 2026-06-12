@@ -43,12 +43,15 @@ import torch.nn as nn
 
 from ladder.benchmark import make_tasks, run_gp
 from ladder.decompose import iter_training_pairs
-from ladder.mcts import BuildState, mcts_search, weighted_rollout
+from ladder.mcts import (
+  Action,  # tuple[Any, ...] 액션 별칭 (단일 소스)
+  BuildState,
+  mcts_search,
+  weighted_rollout,
+)
 from ladder.search import program_str
 from ladder.sim import And, Contact, Or
 from ladder.simplify import polish_program
-
-Action = tuple
 
 # ---------- featurize ----------
 
@@ -488,7 +491,7 @@ def main():
     tasks = make_tasks()
     train_tasks = [t for t in tasks if t.name != holdout]
     if n_var:
-        from ladder_curriculum import make_chain_curriculum
+        from ladder.curriculum import make_chain_curriculum
 
         # 2단 + 3단 혼합. 3단 변형이 rank=2 특징값을 분포 안으로 들여온다
         # (7차 OOD 외삽 진단). canonical 3단 = seq3 는 생성기가 제외.

@@ -144,7 +144,7 @@ def ladder_str(prog: Program) -> str:
 if __name__ == '__main__':
     import sys
 
-    from benchmark import make_tasks
+    from ladder.benchmark import make_tasks
 
     tasks = {t.name: t for t in make_tasks()}
     names = sys.argv[1:] or ['self_hold', 'actuator', 'delayed_off', 'one_shot']

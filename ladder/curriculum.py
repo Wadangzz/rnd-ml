@@ -273,7 +273,7 @@ def make_timer_chain_curriculum(
 # ---------- 자가 점검 ----------
 
 if __name__ == '__main__':
-    from ladder_decompose import decompose_with_states, verify_roundtrip
+    from ladder.decompose import decompose_with_states, verify_roundtrip
 
     n = int(sys.argv[1]) if len(sys.argv) > 1 else 12
     tasks = make_chain_curriculum(n)

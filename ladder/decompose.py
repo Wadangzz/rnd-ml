@@ -39,9 +39,11 @@ ladder_decompose.py — Program → BuildState 액션열 분해 (정책망 라�
 
 import sys
 import textwrap
-from typing import List, Tuple
 
-from ladder.mcts import BuildState
+from ladder.mcts import (
+    Action,  # tuple[Any, ...] 액션 별칭 (단일 소스)
+    BuildState,
+)
 from ladder.render import ladder_str
 from ladder.search import evaluate, program_size, program_str
 from ladder.sim import (
@@ -50,12 +52,8 @@ from ladder.sim import (
     Or,
     Program,
     Pulse,
-    Rung,
     Timer,
 )
-
-Action = tuple
-
 
 # ---------- 분해: Program → 액션열 ----------
 
@@ -141,14 +139,15 @@ def actions_to_program(actions: list[Action], spec) -> Program:
     st = _fresh_state(spec)
     for a in actions:
         st.apply(a)
-    return st.to_program()
+    prog = st.to_program()
+    assert prog is not None, '복원 결과가 빈 프로그램'
+    return prog
 
 
 def verify_roundtrip(prog: Program, spec) -> bool:
     """분해→복원 후 evaluate 동일성 (라벨 유효성의 절대 기준)"""
     actions = program_to_actions(prog)
     back = actions_to_program(actions, spec)
-    assert back is not None, '복원 결과가 빈 프로그램'
     return evaluate(back, spec) == evaluate(prog, spec)
 
 
@@ -176,7 +175,7 @@ def iter_training_pairs(programs, spec):
 # ---------- 자가 점검 ----------
 
 if __name__ == '__main__':
-    from benchmark import make_tasks
+    from ladder.benchmark import make_tasks
 
     tasks = {t.name: t for t in make_tasks()}
     names = sys.argv[1:] or list(tasks)

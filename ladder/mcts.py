@@ -30,6 +30,7 @@ ladder_mcts.py — 래더 합성 MCTS (순수 UCT, 신경망 없음)
 
 import math
 import random
+from typing import Any
 
 from ladder.search import (
     Spec,
@@ -53,6 +54,8 @@ from ladder.sim import (
 
 # ---------- 게임 규칙 (상태/액션) ----------
 
+Action = tuple[Any, ...]  # ('PUSH', dev, mode) / ('TON', p) / ('EMIT', c, op) ...
+
 MAX_ACTIONS = 14  # 한 게임 최대 수 (기본값)
 MAX_STACK = 3  # 스택 깊이 제한 (기본값)
 MAX_RUNGS = 2  # rung 수 제한 (기본값)
@@ -62,8 +65,8 @@ class BuildState:
     """부분 완성 프로그램 = 액션 시퀀스를 재생한 결과
 
     과제별 한도/재료는 생성자 인자로 조절:
-      timer_presets=(2, 3)  → ("TON", preset) 액션 허용 (스택 top을 타이머로 감쌈)
-      allow_pulse=True      → ("PLS",) 액션 허용 (스택 top을 상승엣지로 감쌈)
+      timer_presets=(2, 3)  → ("TON", p) 액션 허용 (top 을 타이머로 감쌈)
+      allow_pulse=True      → ("PLS",) 액션 허용 (top 을 상승엣지로 감쌈)
     """
 
     def __init__(
@@ -113,7 +116,7 @@ class BuildState:
         s.done = self.done
         return s
 
-    def legal_actions(self) -> list[tuple]:
+    def legal_actions(self) -> list[Action]:
         if self.done or self.n_actions >= self.max_actions:
             return []
         acts = []
@@ -149,7 +152,7 @@ class BuildState:
             acts.append(('DONE',))
         return acts
 
-    def apply(self, act: tuple):
+    def apply(self, act: Action):
         kind = act[0]
         if kind == 'PUSH':
             self.stack.append(Contact(act[1], act[2]))
@@ -278,6 +281,7 @@ class Node:
         self.priors = None  # 이 노드의 untried 액션별 prior 캐시
 
     def ucb1(self, c: float, mix: float = 0.5) -> float:
+        assert self.parent is not None  # 루트에선 호출되지 않음
         if self.visits == 0:
             return float('inf')
         mean = self.value_sum / self.visits
@@ -291,6 +295,7 @@ class Node:
         """AlphaZero식 선택: explore 항에 prior 를 곱함.
         미방문 자식도 inf 가 아니라 prior 크기 순으로 줄 세워진다 —
         prior 가 '탐색 방향'을 바꾸는 지점 (rollout 주입과의 본질 차이)."""
+        assert self.parent is not None  # 루트에선 호출되지 않음
         if self.visits == 0:
             exploit = 0.0
         else:
@@ -312,7 +317,7 @@ def mcts_search(
     c_uct: float = 1.0,  # 스윕 결과: 0.7은 갇히고 2.0은 산만. 1.0이 최적
     state_factory=None,  # 과제별 BuildState 설정 주입용
     rollout_policy=None,  # None=균등, weighted_rollout 등 주입 가능
-    prior_fn=None,  # (state, acts) -> probs. 주면 선택=PUCT, 확장=prior 내림차순
+    prior_fn=None,  # (state, acts)->probs. 주면 선택=PUCT, 확장=prior 순
 ):
     rng = random.Random(seed)
     ev = Evaluator(spec)
@@ -330,13 +335,15 @@ def mcts_search(
         # 2) 확장
         if node.untried and not node.state.is_terminal():
             if prior_fn:
-                if node.priors is None:
+                priors = node.priors
+                if priors is None:
                     probs = prior_fn(node.state, node.untried)
-                    node.priors = {a: p for a, p in zip(node.untried, probs)}
+                    priors = dict(zip(node.untried, probs, strict=True))
+                    node.priors = priors
                 # prior 큰 액션부터 트리에 들어옴 (AlphaZero 확장 순서)
-                act = max(node.untried, key=lambda a: node.priors[a])
+                act = max(node.untried, key=lambda a: priors[a])
                 node.untried.remove(act)
-                prior = node.priors[act]
+                prior = priors[act]
             else:
                 act = node.untried.pop(rng.randrange(len(node.untried)))
                 prior = 0.0
@@ -395,7 +402,7 @@ if __name__ == '__main__':
     print('-' * 62)
     print(f'{"seed":>6} | {"무작위 탐색":>12} | {"MCTS":>10} | {"배율":>8}')
     print('-' * 62)
-    for i, (r, m) in enumerate(zip(random_results, mcts_results)):
+    for i, (r, m) in enumerate(zip(random_results, mcts_results, strict=True)):
         if m:
             print(f'{i:>6} | {r:>12,} | {m:>10,} | {r / m:>7.1f}x')
         else:
