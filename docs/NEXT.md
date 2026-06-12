@@ -58,11 +58,12 @@ git 정본 여기 — GitHub 원격 연결은 미완 (private repo 생성 + push
 
 ```bash
 cd ~/rnd-ml
-uv run smoke_test.py                       # 코드 수정 후 필수 (수 초)
-uv run ladder_policy.py --holdout seq3 --curriculum 16   # 8차 재현
-uv run k4_probe.py --skip-base             # seq4 재현
-uv run tchain_probe.py --skip-base         # tchain3 재현
-uv run exit_loop.py                        # ExIt 1회전 재현
+uv run smoke_test.py                                    # 코드 수정 후 필수 (수 초)
+uv run python -m ladder.policy --holdout seq3 --curriculum 16   # 8차 재현
+uv run experiments/unified_probe.py                     # 통합 회귀 (누적 증명)
+uv run experiments/k4_probe.py --skip-base              # seq4 재현
+uv run experiments/tchain_probe.py --skip-base          # tchain3 재현
+uv run experiments/exit_loop.py                         # ExIt 1회전 재현
 ```
 
 - 모든 시드 고정 — 같은 명령 = 같은 결과. 실패 시드는 200k 소진 (수십 분)

@@ -16,9 +16,9 @@ import sys
 
 import numpy as np
 
-from ladder_benchmark import make_tasks
-from ladder_mcts import BuildState, mcts_search
-from ladder_policy import WEIGHTS_PATH, make_net_rollout
+from ladder.benchmark import make_tasks
+from ladder.mcts import BuildState, mcts_search
+from ladder.policy import WEIGHTS_PATH, make_net_rollout
 
 temps = [float(x) for x in sys.argv[1:]] or [1.0, 2.0, 3.0, 5.0]
 data = np.load(WEIGHTS_PATH)

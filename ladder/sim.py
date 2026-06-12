@@ -29,7 +29,6 @@ ladder_sim.py — 래더 IR v1: 순차 로직 + 다중 스캔 시뮬레이션
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Union
 
 # ---------- IR 노드 ----------
 
@@ -37,39 +36,39 @@ from typing import Dict, List, Union
 @dataclass
 class Contact:
     device: str
-    mode: str = "NO"  # "NO"=A접점, "NC"=B접점
+    mode: str = 'NO'  # "NO"=A접점, "NC"=B접점
 
 
 @dataclass
 class Timer:
     name: str  # 타이머 이름 ("T0" 등) — 상태가 메모리에 저장됨
     preset: int  # 도달해야 하는 스캔 수
-    input: "Logic"  # 타이머를 구동하는 논리
+    input: 'Logic'  # 타이머를 구동하는 논리
 
 
 @dataclass
 class Pulse:
     name: str  # 상태 키 ("P0" 등) — 직전 스캔의 입력값 저장에 사용
-    input: "Logic"  # 엣지를 검출할 논리
+    input: 'Logic'  # 엣지를 검출할 논리
 
 
 @dataclass
 class And:
-    args: List["Logic"]
+    args: list['Logic']
 
 
 @dataclass
 class Or:
-    args: List["Logic"]
+    args: list['Logic']
 
 
-Logic = Union[Contact, And, Or, Timer, Pulse]
+Logic = Contact | And | Or | Timer | Pulse
 
 
 @dataclass
 class Coil:
     device: str
-    op: str = "OUT"  # "OUT" | "SET" | "RST"
+    op: str = 'OUT'  # "OUT" | "SET" | "RST"
 
 
 @dataclass
@@ -80,7 +79,7 @@ class Rung:
 
 @dataclass
 class Program:
-    rungs: List[Rung] = field(default_factory=list)
+    rungs: list[Rung] = field(default_factory=list)
 
 
 # ---------- 메모리 (비트 + 타이머 상태) ----------
@@ -88,9 +87,9 @@ class Program:
 
 class Memory:
     def __init__(self):
-        self.bits: Dict[str, bool] = {}
-        self.timer_acc: Dict[str, int] = {}  # 타이머 누적 스캔 수
-        self.pulse_prev: Dict[str, bool] = {}  # PLS 직전 스캔 입력값
+        self.bits: dict[str, bool] = {}
+        self.timer_acc: dict[str, int] = {}  # 타이머 누적 스캔 수
+        self.pulse_prev: dict[str, bool] = {}  # PLS 직전 스캔 입력값
 
     def get(self, dev: str) -> bool:
         return self.bits.get(dev, False)
@@ -105,7 +104,7 @@ class Memory:
 def eval_logic(node: Logic, mem: Memory) -> bool:
     if isinstance(node, Contact):
         v = mem.get(node.device)
-        return v if node.mode == "NO" else not v
+        return v if node.mode == 'NO' else not v
     if isinstance(node, And):
         return all(eval_logic(a, mem) for a in node.args)
     if isinstance(node, Or):
@@ -123,18 +122,18 @@ def eval_logic(node: Logic, mem: Memory) -> bool:
         prev = mem.pulse_prev.get(node.name, False)
         mem.pulse_prev[node.name] = cur
         return cur and not prev
-    raise TypeError(f"알 수 없는 논리 노드: {node}")
+    raise TypeError(f'알 수 없는 논리 노드: {node}')
 
 
 def scan_once(prog: Program, mem: Memory):
     for rung in prog.rungs:
         result = eval_logic(rung.logic, mem)
-        if rung.coil.op == "OUT":
+        if rung.coil.op == 'OUT':
             mem.set(rung.coil.device, result)
-        elif rung.coil.op == "SET":
+        elif rung.coil.op == 'SET':
             if result:
                 mem.set(rung.coil.device, True)
-        elif rung.coil.op == "RST":
+        elif rung.coil.op == 'RST':
             if result:
                 mem.set(rung.coil.device, False)
 
@@ -143,8 +142,8 @@ def scan_once(prog: Program, mem: Memory):
 
 
 def simulate(
-    prog: Program, input_trace: List[Dict[str, int]], watch: List[str]
-) -> List[Dict[str, int]]:
+    prog: Program, input_trace: list[dict[str, int]], watch: list[str]
+) -> list[dict[str, int]]:
     """
     input_trace[t] : 스캔 t에서 갱신할 입력 (명시 안 한 입력은 이전 값 유지)
     watch          : 매 스캔 끝에 기록할 디바이스
@@ -163,24 +162,24 @@ def simulate(
 def print_trace(input_trace, trace, in_devs, out_devs):
     """trace를 타임차트처럼 출력"""
     header = (
-        "scan | "
-        + " ".join(f"{d:>3}" for d in in_devs)
-        + " | "
-        + " ".join(f"{d:>3}" for d in out_devs)
+        'scan | '
+        + ' '.join(f'{d:>3}' for d in in_devs)
+        + ' | '
+        + ' '.join(f'{d:>3}' for d in out_devs)
     )
     print(header)
-    print("-" * len(header))
+    print('-' * len(header))
     cur_in = {d: 0 for d in in_devs}
     for t, (inp, out) in enumerate(zip(input_trace, trace)):
         cur_in.update(inp)
-        ins = " ".join(f"{cur_in.get(d, 0):>3}" for d in in_devs)
-        outs = " ".join(f"{out.get(d, 0):>3}" for d in out_devs)
-        print(f"{t:>4} | {ins} | {outs}")
+        ins = ' '.join(f'{cur_in.get(d, 0):>3}' for d in in_devs)
+        outs = ' '.join(f'{out.get(d, 0):>3}' for d in out_devs)
+        print(f'{t:>4} | {ins} | {outs}')
 
 
 # ---------- 데모 ----------
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     # ============================================================
     # 데모 1: 자기유지 (전형적인 기동/정지 회로)
     #   rung: ( X0(기동,A접점) OR M0(자기유지) ) AND X1(정지,B접점) -> M0
@@ -189,35 +188,35 @@ if __name__ == "__main__":
     self_hold = Program(
         [
             Rung(
-                Coil("M0"),
+                Coil('M0'),
                 And(
                     [
-                        Or([Contact("X0", "NO"), Contact("M0", "NO")]),
-                        Contact("X1", "NC"),
+                        Or([Contact('X0', 'NO'), Contact('M0', 'NO')]),
+                        Contact('X1', 'NC'),
                     ]
                 ),
             ),
-            Rung(Coil("Y0"), Contact("M0", "NO")),
+            Rung(Coil('Y0'), Contact('M0', 'NO')),
         ]
     )
 
     # 입력 시나리오: 기동버튼 1스캔만 누름 -> 유지 -> 정지버튼 누름
     inputs1 = [
-        {"X0": 0, "X1": 0},  # 0: 대기
-        {"X0": 1},  # 1: 기동 버튼 ON (한 스캔만)
-        {"X0": 0},  # 2: 버튼 뗌    <- 그래도 유지돼야 함
+        {'X0': 0, 'X1': 0},  # 0: 대기
+        {'X0': 1},  # 1: 기동 버튼 ON (한 스캔만)
+        {'X0': 0},  # 2: 버튼 뗌    <- 그래도 유지돼야 함
         {},  # 3:
         {},  # 4:
-        {"X1": 1},  # 5: 정지 버튼 ON
-        {"X1": 0},  # 6: 정지 버튼 뗌 <- 꺼진 상태 유지돼야 함
+        {'X1': 1},  # 5: 정지 버튼 ON
+        {'X1': 0},  # 6: 정지 버튼 뗌 <- 꺼진 상태 유지돼야 함
         {},  # 7:
     ]
-    print("=" * 50)
-    print("데모 1: 자기유지 (X0=기동, X1=정지, Y0=출력)")
-    print("=" * 50)
-    trace1 = simulate(self_hold, inputs1, ["M0", "Y0"])
-    print_trace(inputs1, trace1, ["X0", "X1"], ["M0", "Y0"])
-    print("→ 버튼(X0)을 뗐는데도 Y0가 유지되다가, 정지(X1)에 꺼짐")
+    print('=' * 50)
+    print('데모 1: 자기유지 (X0=기동, X1=정지, Y0=출력)')
+    print('=' * 50)
+    trace1 = simulate(self_hold, inputs1, ['M0', 'Y0'])
+    print_trace(inputs1, trace1, ['X0', 'X1'], ['M0', 'Y0'])
+    print('→ 버튼(X0)을 뗐는데도 Y0가 유지되다가, 정지(X1)에 꺼짐')
     print("→ 진리표로는 절대 표현 못 하는 동작. 이게 '순차'다.")
     print()
 
@@ -227,23 +226,23 @@ if __name__ == "__main__":
     # ============================================================
     timer_prog = Program(
         [
-            Rung(Coil("Y0"), Timer("T0", 3, Contact("X0", "NO"))),
+            Rung(Coil('Y0'), Timer('T0', 3, Contact('X0', 'NO'))),
         ]
     )
 
     inputs2 = [
-        {"X0": 0},  # 0
-        {"X0": 1},  # 1: 입력 ON  (누적 1)
+        {'X0': 0},  # 0
+        {'X0': 1},  # 1: 입력 ON  (누적 1)
         {},  # 2:          (누적 2)
         {},  # 3:          (누적 3 -> Y0 ON)
         {},  # 4:          (유지)
-        {"X0": 0},  # 5: 입력 OFF (리셋 -> Y0 OFF)
-        {"X0": 1},  # 6: 다시 ON  (누적 1부터 다시)
+        {'X0': 0},  # 5: 입력 OFF (리셋 -> Y0 OFF)
+        {'X0': 1},  # 6: 다시 ON  (누적 1부터 다시)
         {},  # 7:          (누적 2 — 아직 OFF)
     ]
-    print("=" * 50)
-    print("데모 2: 온딜레이 타이머 (preset=3스캔)")
-    print("=" * 50)
-    trace2 = simulate(timer_prog, inputs2, ["Y0"])
-    print_trace(inputs2, trace2, ["X0"], ["Y0"])
-    print("→ ON 유지 3스캔째에 켜지고, 입력 끊기면 즉시 리셋")
+    print('=' * 50)
+    print('데모 2: 온딜레이 타이머 (preset=3스캔)')
+    print('=' * 50)
+    trace2 = simulate(timer_prog, inputs2, ['Y0'])
+    print_trace(inputs2, trace2, ['X0'], ['Y0'])
+    print('→ ON 유지 3스캔째에 켜지고, 입력 끊기면 즉시 리셋')

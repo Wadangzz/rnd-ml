@@ -30,9 +30,8 @@ ladder_mcts.py — 래더 합성 MCTS (순수 UCT, 신경망 없음)
 
 import math
 import random
-from typing import List, Optional, Tuple
 
-from ladder_search import (
+from ladder.search import (
     Spec,
     coil_allowed,
     coil_usage,
@@ -41,7 +40,7 @@ from ladder_search import (
     program_size,
     program_str,
 )
-from ladder_sim import (
+from ladder.sim import (
     And,
     Coil,
     Contact,
@@ -73,7 +72,7 @@ class BuildState:
         max_actions: int = MAX_ACTIONS,
         max_stack: int = MAX_STACK,
         max_rungs: int = MAX_RUNGS,
-        timer_presets: Tuple[int, ...] = (),
+        timer_presets: tuple[int, ...] = (),
         allow_pulse: bool = False,
         max_timers: int = 2,
         max_pulses: int = 1,
@@ -88,14 +87,14 @@ class BuildState:
         self.max_timers = max_timers
         self.max_pulses = max_pulses
         self.allow_setrst = allow_setrst
-        self.stack: List = []  # 논리 노드 스택
-        self.rungs: List[Rung] = []
+        self.stack: list = []  # 논리 노드 스택
+        self.rungs: list[Rung] = []
         self.n_actions = 0
         self.n_timers = 0  # 이름 부여 + 개수 제한용
         self.n_pulses = 0
         self.done = False
 
-    def clone(self) -> "BuildState":
+    def clone(self) -> 'BuildState':
         s = BuildState.__new__(BuildState)
         s.spec = self.spec
         s.max_actions = self.max_actions
@@ -114,7 +113,7 @@ class BuildState:
         s.done = self.done
         return s
 
-    def legal_actions(self) -> List[Tuple]:
+    def legal_actions(self) -> list[tuple]:
         if self.done or self.n_actions >= self.max_actions:
             return []
         acts = []
@@ -122,61 +121,63 @@ class BuildState:
         # PUSH
         if len(self.stack) < self.max_stack:
             for d in devices:
-                acts.append(("PUSH", d, "NO"))
-                acts.append(("PUSH", d, "NC"))
+                acts.append(('PUSH', d, 'NO'))
+                acts.append(('PUSH', d, 'NC'))
         # AND / OR
         if len(self.stack) >= 2:
-            acts.append(("AND",))
-            acts.append(("OR",))
+            acts.append(('AND',))
+            acts.append(('OR',))
         # TON / PLS: 스택 top을 감쌈
         if self.stack and self.n_timers < self.max_timers:
             for p in self.timer_presets:
-                acts.append(("TON", p))
+                acts.append(('TON', p))
         if self.stack and self.allow_pulse and self.n_pulses < self.max_pulses:
-            acts.append(("PLS",))
+            acts.append(('PLS',))
         # EMIT (allow_setrst면 SET/RST 코일도 — 래치 체인의 자연형)
         # 이중 코일 금지: 이미 쓴 코일과 충돌하는 EMIT은 액션에서 제외
         if len(self.stack) == 1 and len(self.rungs) < self.max_rungs:
-            ops = ("OUT", "SET", "RST") if self.allow_setrst else ("OUT",)
+            ops = ('OUT', 'SET', 'RST') if self.allow_setrst else ('OUT',)
             used = coil_usage(self.rungs)
             for c in self.spec.outputs + self.spec.internals:
                 for op in ops:
                     if coil_allowed(used, c, op):
-                        acts.append(("EMIT", c, op))
+                        acts.append(('EMIT', c, op))
         # DONE: 출력 코일이 최소 1개 있고 스택이 비었을 때만
         if not self.stack and any(
             r.coil.device in self.spec.outputs for r in self.rungs
         ):
-            acts.append(("DONE",))
+            acts.append(('DONE',))
         return acts
 
-    def apply(self, act: Tuple):
+    def apply(self, act: tuple):
         kind = act[0]
-        if kind == "PUSH":
+        if kind == 'PUSH':
             self.stack.append(Contact(act[1], act[2]))
-        elif kind == "AND":
+        elif kind == 'AND':
             b, a = self.stack.pop(), self.stack.pop()
             self.stack.append(And([a, b]))
-        elif kind == "OR":
+        elif kind == 'OR':
             b, a = self.stack.pop(), self.stack.pop()
             self.stack.append(Or([a, b]))
-        elif kind == "TON":
-            self.stack.append(Timer(f"T{self.n_timers}", act[1], self.stack.pop()))
+        elif kind == 'TON':
+            self.stack.append(
+                Timer(f'T{self.n_timers}', act[1], self.stack.pop())
+            )
             self.n_timers += 1
-        elif kind == "PLS":
-            self.stack.append(Pulse(f"P{self.n_pulses}", self.stack.pop()))
+        elif kind == 'PLS':
+            self.stack.append(Pulse(f'P{self.n_pulses}', self.stack.pop()))
             self.n_pulses += 1
-        elif kind == "EMIT":
-            op = act[2] if len(act) > 2 else "OUT"
+        elif kind == 'EMIT':
+            op = act[2] if len(act) > 2 else 'OUT'
             self.rungs.append(Rung(Coil(act[1], op), self.stack.pop()))
-        elif kind == "DONE":
+        elif kind == 'DONE':
             self.done = True
         self.n_actions += 1
 
     def is_terminal(self) -> bool:
         return self.done or not self.legal_actions()
 
-    def to_program(self) -> Optional[Program]:
+    def to_program(self) -> Program | None:
         if not self.rungs:
             return None
         return Program(self.rungs)
@@ -224,17 +225,19 @@ class Evaluator:
 # 1~2개) → 롤아웃이 스택만 쌓다 max_actions를 소진. 액션 '종류' 단위로
 # 먼저 가중 샘플해 구조 액션(AND/OR/EMIT/DONE)의 발현 빈도를 복원한다.
 KIND_WEIGHTS = {
-    "PUSH": 1.0,
-    "AND": 3.0,
-    "OR": 3.0,
-    "TON": 2.0,
-    "PLS": 2.0,
-    "EMIT": 4.0,
-    "DONE": 3.0,
+    'PUSH': 1.0,
+    'AND': 3.0,
+    'OR': 3.0,
+    'TON': 2.0,
+    'PLS': 2.0,
+    'EMIT': 4.0,
+    'DONE': 3.0,
 }
 
 
-def weighted_rollout(state: BuildState, acts: List[Tuple], rng: random.Random) -> Tuple:
+def weighted_rollout(
+    state: BuildState, acts: list[tuple], rng: random.Random
+) -> tuple:
     """종류 우선 가중 샘플 → 종류 내 균등 샘플"""
     kinds = {}
     for a in acts:
@@ -250,23 +253,23 @@ def weighted_rollout(state: BuildState, acts: List[Tuple], rng: random.Random) -
 
 class Node:
     __slots__ = (
-        "state",
-        "parent",
-        "children",
-        "untried",
-        "visits",
-        "value_sum",
-        "value_max",
-        "action",
-        "prior",
-        "priors",
+        'state',
+        'parent',
+        'children',
+        'untried',
+        'visits',
+        'value_sum',
+        'value_max',
+        'action',
+        'prior',
+        'priors',
     )
 
     def __init__(self, state: BuildState, parent=None, action=None, prior=0.0):
         self.state = state
         self.parent = parent
         self.action = action
-        self.children: List[Node] = []
+        self.children: list[Node] = []
         self.untried = state.legal_actions()
         self.visits = 0
         self.value_sum = 0.0
@@ -276,7 +279,7 @@ class Node:
 
     def ucb1(self, c: float, mix: float = 0.5) -> float:
         if self.visits == 0:
-            return float("inf")
+            return float('inf')
         mean = self.value_sum / self.visits
         # 평균과 최대를 섞음: 단일 플레이어 결정론 문제의 정석.
         # 평균만 쓰면 '드물지만 완벽한 해'가 있는 가지가 묻힌다.
@@ -294,7 +297,10 @@ class Node:
             mean = self.value_sum / self.visits
             exploit = (1 - mix) * mean + mix * self.value_max
         explore = (
-            c * self.prior * math.sqrt(self.parent.visits + 1) / (1 + self.visits)
+            c
+            * self.prior
+            * math.sqrt(self.parent.visits + 1)
+            / (1 + self.visits)
         )
         return exploit + explore
 
@@ -363,34 +369,34 @@ def mcts_search(
 
 # ---------- 실험: MCTS vs 무작위 ----------
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     spec = make_self_hold_spec()
     BUDGET = 200_000
 
-    print("문제: 기동/정지 자기유지 회로 합성")
-    print(f"예산: 시뮬레이터 호출 {BUDGET:,}회  |  완벽해 찾으면 조기 종료")
-    print("=" * 62)
+    print('문제: 기동/정지 자기유지 회로 합성')
+    print(f'예산: 시뮬레이터 호출 {BUDGET:,}회  |  완벽해 찾으면 조기 종료')
+    print('=' * 62)
 
-    print("\n--- MCTS (순수 UCT) ---")
+    print('\n--- MCTS (순수 UCT) ---')
     mcts_results = []
     for seed in [0, 1, 2]:
         ev = mcts_search(spec, BUDGET, seed)
         mcts_results.append(ev.found_at)
-        status = f"{ev.found_at:,}회 만에 발견" if ev.found_at else "실패"
-        print(f"[seed {seed}] {status}  (최고점수 {ev.best_score:.4f})")
+        status = f'{ev.found_at:,}회 만에 발견' if ev.found_at else '실패'
+        print(f'[seed {seed}] {status}  (최고점수 {ev.best_score:.4f})')
         if ev.best_prog:
             print(program_str(ev.best_prog))
 
     # 무작위 탐색 결과 (ladder_search.py 동일 조건 실행값)
     random_results = [16203, 16721, 43108]
 
-    print("\n" + "=" * 62)
-    print("비교: 완벽해 발견까지 시뮬레이터 호출 수")
-    print("-" * 62)
-    print(f"{'seed':>6} | {'무작위 탐색':>12} | {'MCTS':>10} | {'배율':>8}")
-    print("-" * 62)
+    print('\n' + '=' * 62)
+    print('비교: 완벽해 발견까지 시뮬레이터 호출 수')
+    print('-' * 62)
+    print(f'{"seed":>6} | {"무작위 탐색":>12} | {"MCTS":>10} | {"배율":>8}')
+    print('-' * 62)
     for i, (r, m) in enumerate(zip(random_results, mcts_results)):
         if m:
-            print(f"{i:>6} | {r:>12,} | {m:>10,} | {r / m:>7.1f}x")
+            print(f'{i:>6} | {r:>12,} | {m:>10,} | {r / m:>7.1f}x')
         else:
-            print(f"{i:>6} | {r:>12,} | {'실패':>10} | {'-':>8}")
+            print(f'{i:>6} | {r:>12,} | {"실패":>10} | {"-":>8}')

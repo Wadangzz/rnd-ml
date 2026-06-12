@@ -41,10 +41,10 @@ import sys
 import textwrap
 from typing import List, Tuple
 
-from ladder_mcts import BuildState
-from ladder_search import evaluate, program_size, program_str
-from render_ladder import ladder_str
-from ladder_sim import (
+from ladder.mcts import BuildState
+from ladder.render import ladder_str
+from ladder.search import evaluate, program_size, program_str
+from ladder.sim import (
     And,
     Contact,
     Or,
@@ -54,42 +54,42 @@ from ladder_sim import (
     Timer,
 )
 
-Action = Tuple
+Action = tuple
 
 
 # ---------- 분해: Program → 액션열 ----------
 
 
-def emit_logic(node, out: List[Action]):
+def emit_logic(node, out: list[Action]):
     """로직 트리를 후위순회로 펴서 out 에 액션 추가 (스택 net +1)"""
     if isinstance(node, Contact):
-        out.append(("PUSH", node.device, node.mode))
+        out.append(('PUSH', node.device, node.mode))
     elif isinstance(node, (And, Or)):
-        op = "AND" if isinstance(node, And) else "OR"
+        op = 'AND' if isinstance(node, And) else 'OR'
         args = node.args
         if not args:
-            raise ValueError(f"빈 {op} 노드는 분해 불가")
+            raise ValueError(f'빈 {op} 노드는 분해 불가')
         emit_logic(args[0], out)  # 첫 인자 (단항이면 op 없이 그대로)
         for a in args[1:]:
             emit_logic(a, out)
             out.append((op,))  # 좌측 폴딩: 직전 결과 + 새 인자
     elif isinstance(node, Timer):
         emit_logic(node.input, out)
-        out.append(("TON", node.preset))
+        out.append(('TON', node.preset))
     elif isinstance(node, Pulse):
         emit_logic(node.input, out)
-        out.append(("PLS",))
+        out.append(('PLS',))
     else:
-        raise TypeError(f"분해 불가 노드: {node!r}")
+        raise TypeError(f'분해 불가 노드: {node!r}')
 
 
-def program_to_actions(prog: Program) -> List[Action]:
+def program_to_actions(prog: Program) -> list[Action]:
     """정답 회로 → 정규 액션열 (마지막은 항상 DONE)"""
-    acts: List[Action] = []
+    acts: list[Action] = []
     for rung in prog.rungs:
         emit_logic(rung.logic, acts)
-        acts.append(("EMIT", rung.coil.device, rung.coil.op))
-    acts.append(("DONE",))
+        acts.append(('EMIT', rung.coil.device, rung.coil.op))
+    acts.append(('DONE',))
     return acts
 
 
@@ -118,7 +118,9 @@ def _fresh_state(spec) -> BuildState:
     )
 
 
-def decompose_with_states(prog: Program, spec) -> List[Tuple[BuildState, Action]]:
+def decompose_with_states(
+    prog: Program, spec
+) -> list[tuple[BuildState, Action]]:
     """정답 회로 → [(상태 스냅샷, 정답 다음수), ...] 학습 라벨.
 
     상태 스냅샷은 '그 액션을 적용하기 직전' 의 BuildState (stack/rungs/
@@ -134,7 +136,7 @@ def decompose_with_states(prog: Program, spec) -> List[Tuple[BuildState, Action]
     return pairs
 
 
-def actions_to_program(actions: List[Action], spec) -> Program:
+def actions_to_program(actions: list[Action], spec) -> Program:
     """액션열 → 복원 Program (라운드트립 검증용, legal 게이트 우회)"""
     st = _fresh_state(spec)
     for a in actions:
@@ -146,7 +148,7 @@ def verify_roundtrip(prog: Program, spec) -> bool:
     """분해→복원 후 evaluate 동일성 (라벨 유효성의 절대 기준)"""
     actions = program_to_actions(prog)
     back = actions_to_program(actions, spec)
-    assert back is not None, "복원 결과가 빈 프로그램"
+    assert back is not None, '복원 결과가 빈 프로그램'
     return evaluate(back, spec) == evaluate(prog, spec)
 
 
@@ -155,13 +157,13 @@ def verify_roundtrip(prog: Program, spec) -> bool:
 
 def action_str(a: Action) -> str:
     kind = a[0]
-    if kind == "PUSH":
-        return f"PUSH {a[1]}{'/' if a[2] == 'NC' else ''}"
-    if kind == "EMIT":
-        op = a[2] if len(a) > 2 else "OUT"
-        return f"EMIT {a[1]}" + ("" if op == "OUT" else f" [{op}]")
-    if kind == "TON":
-        return f"TON K{a[1]}"
+    if kind == 'PUSH':
+        return f'PUSH {a[1]}{"/" if a[2] == "NC" else ""}'
+    if kind == 'EMIT':
+        op = a[2] if len(a) > 2 else 'OUT'
+        return f'EMIT {a[1]}' + ('' if op == 'OUT' else f' [{op}]')
+    if kind == 'TON':
+        return f'TON K{a[1]}'
     return kind  # AND / OR / PLS / DONE
 
 
@@ -173,13 +175,13 @@ def iter_training_pairs(programs, spec):
 
 # ---------- 자가 점검 ----------
 
-if __name__ == "__main__":
-    from ladder_benchmark import make_tasks
+if __name__ == '__main__':
+    from benchmark import make_tasks
 
     tasks = {t.name: t for t in make_tasks()}
     names = sys.argv[1:] or list(tasks)
     unknown = set(names) - set(tasks)
-    assert not unknown, f"없는 과제: {unknown}"
+    assert not unknown, f'없는 과제: {unknown}'
 
     detail = len(sys.argv) > 1  # 과제 지정 시 액션열까지 출력
     total = 0
@@ -189,18 +191,18 @@ if __name__ == "__main__":
         ok = verify_roundtrip(t.reference, t.spec)
         pairs = decompose_with_states(t.reference, t.spec)
         total += len(pairs)
-        mark = "OK " if ok else "FAIL"
+        mark = 'OK ' if ok else 'FAIL'
         print(
-            f"[{mark}] {name:<12} ref 크기 {program_size(t.reference):>2}"
-            f"  →  {len(actions):>2}수 / {len(pairs):>2} 라벨"
+            f'[{mark}] {name:<12} ref 크기 {program_size(t.reference):>2}'
+            f'  →  {len(actions):>2}수 / {len(pairs):>2} 라벨'
         )
-        assert ok, f"{name}: 라운드트립 evaluate 불일치"
+        assert ok, f'{name}: 라운드트립 evaluate 불일치'
         if detail:
-            print(f"  회로: {program_str(t.reference).strip()}")
-            print(textwrap.indent(ladder_str(t.reference), "  "))
-            print("  액션열: " + "  ".join(action_str(a) for a in actions))
+            print(f'  회로: {program_str(t.reference).strip()}')
+            print(textwrap.indent(ladder_str(t.reference), '  '))
+            print('  액션열: ' + '  '.join(action_str(a) for a in actions))
             print()
 
-    print("-" * 52)
-    print(f"reference {len(names)}과제에서 (상태→수) 라벨 {total}개 추출")
-    print("라운드트립 검증 전부 통과 (evaluate 동일)")
+    print('-' * 52)
+    print(f'reference {len(names)}과제에서 (상태→수) 라벨 {total}개 추출')
+    print('라운드트립 검증 전부 통과 (evaluate 동일)')

@@ -25,11 +25,11 @@ exit_loop.py — Expert Iteration(ExIt) 1회전: 탐색이 만든 데이터로 �
 
 import numpy as np
 
-from ladder_benchmark import make_tasks
-from ladder_curriculum import make_chain_curriculum
-from ladder_decompose import decompose_with_states
-from ladder_mcts import BuildState, mcts_search
-from ladder_policy import (
+from ladder.benchmark import make_tasks
+from ladder.curriculum import make_chain_curriculum
+from ladder.decompose import decompose_with_states
+from ladder.mcts import BuildState, mcts_search
+from ladder.policy import (
   build_samples,
   candidate_actions,
   extract_weights,
@@ -38,13 +38,13 @@ from ladder_policy import (
   make_prior_fn,
   train,
 )
-from ladder_search import (
+from ladder.search import (
   evaluate,
   find_coil_conflicts,
   program_size,
   program_str,
 )
-from ladder_simplify import polish_program
+from ladder.simplify import polish_program
 
 BUDGET = 200_000
 SEEDS = (0, 1, 2)

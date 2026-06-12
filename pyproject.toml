@@ -1,7 +1,7 @@
 [project]
 name = "rnd-ml"
 version = "0.1.0"
-description = "Add your description here"
+description = "래더 자동 생성 R&D — 탐색(MCTS/GP) + 정책망 prior (모방학습/PUCT/ExIt)"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -9,6 +9,15 @@ dependencies = [
     "numpy>=2.4.6",
     "torch>=2.12.0",
 ]
+
+# ladder/ 패키지를 editable 설치 — experiments/, tools/ 스크립트가
+# 어디서 실행돼도 `from ladder.xxx import ...` 가 동작
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["ladder"]
 
 
 [tool.pytest.ini_options]
@@ -23,7 +32,7 @@ quote_basic_values = false
 
 [tool.ruff]
 line-length = 80 # for lint
-indent-width = 2
+indent-width = 4
 # target-version = "py311"
 
 [tool.ruff.lint.pycodestyle]
@@ -64,7 +73,7 @@ skip-magic-trailing-comma = false
 docstring-code-format = true
 
 [tool.ruff.lint.isort]
-known-first-party = ["app"]
+known-first-party = ["ladder"]
 
 [tool.pyright]
 reportMissingImports = "none"

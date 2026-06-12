@@ -25,13 +25,13 @@ ladder_gp.py — 유전 프로그래밍 (rung 단위 교차 + 서브트리 변�
 import random
 from copy import deepcopy
 
-from ladder_search import (
+from ladder.search import (
     coil_allowed,
     coil_usage,
     evaluate,
     program_size,
 )
-from ladder_sim import (
+from ladder.sim import (
     And,
     Coil,
     Contact,
@@ -52,11 +52,11 @@ def renumber_stateful(prog: Program):
     def walk(node):
         nonlocal n
         if isinstance(node, Timer):
-            node.name = f"T{n}"
+            node.name = f'T{n}'
             n += 1
             walk(node.input)
         elif isinstance(node, Pulse):
-            node.name = f"P{n}"
+            node.name = f'P{n}'
             n += 1
             walk(node.input)
         elif isinstance(node, (And, Or)):
@@ -69,7 +69,7 @@ def renumber_stateful(prog: Program):
 
 def logic_positions(rung: Rung):
     """교체 가능한 모든 자리 — (컨테이너, 'logic'/'input' attr 또는 args 인덱스)"""
-    out = [(rung, "logic")]
+    out = [(rung, 'logic')]
 
     def walk(node):
         if isinstance(node, (And, Or)):
@@ -77,7 +77,7 @@ def logic_positions(rung: Rung):
                 out.append((node, i))
                 walk(a)
         elif isinstance(node, (Timer, Pulse)):
-            out.append((node, "input"))
+            out.append((node, 'input'))
             walk(node.input)
 
     walk(rung.logic)
@@ -110,7 +110,9 @@ def contacts_of(rung: Rung):
 # ---------- 유전 연산자 ----------
 
 
-def crossover(a: Program, b: Program, rng: random.Random, max_rungs: int) -> Program:
+def crossover(
+    a: Program, b: Program, rng: random.Random, max_rungs: int
+) -> Program:
     """rung 목록 단일점 스플라이스 (rung 순서 보존)"""
     i = rng.randint(0, len(a.rungs))
     j = rng.randint(0, len(b.rungs))
@@ -131,46 +133,55 @@ def dedupe_coils(prog: Program):
 
 
 def mutate(
-    prog: Program, rng: random.Random, new_logic, coil_pool, coil_ops, max_rungs: int
+    prog: Program,
+    rng: random.Random,
+    new_logic,
+    coil_pool,
+    coil_ops,
+    max_rungs: int,
 ):
-    kinds = ["subtree", "contact", "coil"]
+    kinds = ['subtree', 'contact', 'coil']
     weights = [0.45, 0.25, 0.15]
     if len(prog.rungs) < max_rungs:
-        kinds.append("add")
+        kinds.append('add')
         weights.append(0.08)
     if len(prog.rungs) > 1:
-        kinds.append("del")
+        kinds.append('del')
         weights.append(0.07)
     kind = rng.choices(kinds, weights)[0]
 
-    if kind == "add":
+    if kind == 'add':
         used = coil_usage(prog.rungs)
         cands = [
-            (d, op) for d in coil_pool for op in coil_ops
+            (d, op)
+            for d in coil_pool
+            for op in coil_ops
             if coil_allowed(used, d, op)
         ]
         if cands:
             d, op = rng.choice(cands)
             prog.rungs.append(Rung(Coil(d, op), new_logic(rng)))
         return
-    if kind == "del":
+    if kind == 'del':
         prog.rungs.pop(rng.randrange(len(prog.rungs)))
         return
     rung = rng.choice(prog.rungs)
-    if kind == "coil":
+    if kind == 'coil':
         others = coil_usage([x for x in prog.rungs if x is not rung])
         cands = [
-            (d, op) for d in coil_pool for op in coil_ops
+            (d, op)
+            for d in coil_pool
+            for op in coil_ops
             if coil_allowed(others, d, op)
         ]
         if cands:
             d, op = rng.choice(cands)
             rung.coil = Coil(d, op)
-    elif kind == "contact":
+    elif kind == 'contact':
         cs = contacts_of(rung)
         if cs:
             c = rng.choice(cs)
-            c.mode = "NC" if c.mode == "NO" else "NO"
+            c.mode = 'NC' if c.mode == 'NO' else 'NO'
     else:
         container, slot = rng.choice(logic_positions(rung))
         set_at(container, slot, new_logic(rng))
@@ -196,7 +207,7 @@ def gp_search(
 ):
     """반환: (found_at, best_acc, best_prog) — 벤치마크 러너 호환"""
     rng = random.Random(seed)
-    coil_ops = ("OUT", "SET", "RST") if allow_setrst else ("OUT",)
+    coil_ops = ('OUT', 'SET', 'RST') if allow_setrst else ('OUT',)
     outputs = set(spec.outputs)
 
     evals = 0
@@ -229,7 +240,7 @@ def gp_search(
         a = pick()
         if rng.random() < cross_p:
             child = crossover(a, pick(), rng, max_rungs)
-            dedupe_coils(child)      # 스플라이스로 생긴 이중 코일 수선
+            dedupe_coils(child)  # 스플라이스로 생긴 이중 코일 수선
         else:
             child = deepcopy(a)
         mutate(child, rng, new_logic, coil_pool, coil_ops, max_rungs)

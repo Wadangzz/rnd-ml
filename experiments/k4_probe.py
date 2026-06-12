@@ -19,23 +19,23 @@ k4_probe.py — K=4 체인 탐침: 새 한계 설정 + 학습 prior 의 인스�
 
 import sys
 
-from ladder_benchmark import (
+from ladder.benchmark import (
   GenCfg,
   make_tasks,
   run_gp,
   run_mcts_w,
   run_random,
 )
-from ladder_curriculum import make_chain_curriculum, make_chain_task
-from ladder_mcts import BuildState, mcts_search
-from ladder_policy import (
+from ladder.curriculum import make_chain_curriculum, make_chain_task
+from ladder.mcts import BuildState, mcts_search
+from ladder.policy import (
   build_samples,
   extract_weights,
   make_net_rollout,
   make_prior_fn,
   train,
 )
-from ladder_search import program_size, program_str
+from ladder.search import program_size, program_str
 
 BUDGET = 200_000
 SEEDS = (0, 1, 2)

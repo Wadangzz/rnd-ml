@@ -19,7 +19,8 @@ import matplotlib
 
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from benchmark import make_tasks
+
+from ladder.benchmark import make_tasks
 
 plt.rcParams['font.family'] = 'Malgun Gothic'
 plt.rcParams['axes.unicode_minus'] = False

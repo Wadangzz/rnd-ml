@@ -30,45 +30,50 @@
 └─ IR ──────────── 래더 미니 언어 (Contact/And/Or/Timer/Pulse/Coil)
 ```
 
-## 파일 맵
+## 구조
+
+```
+ladder/        # 코어 라이브러리 (import 대상, editable 설치)
+experiments/   # 가설 1개 = 스크립트 1개 (실험 일지와 1:1)
+tools/         # 눈검수/시각화
+docs/          # NEXT.md(핸드오프) · MEMO.md(메모리 스냅샷) · theory.html(이론)
+smoke_test.py  # 코드 수정 후 필수 관문 (수 초)
+```
 
 | 파일 | 역할 |
 |---|---|
-| `ladder_sim.py` | IR v1 + 스캔 평가기 + `simulate()` (다중 스캔) |
-| `ladder_search.py` | `Spec`/`Scenario` + `evaluate()`(일치율·invariant 위반) + `score()` + 무작위 생성기 |
-| `ladder_mcts.py` | 스택 액션 게임 `BuildState` + 순수 UCT + `weighted_rollout`. **순수 UCT는 무작위에 전패 — 베이스라인 용도** |
-| `ladder_gp.py` | 유전 프로그래밍 — rung 단일점 교차 + 변이 5종. **interlock/seq2를 유일하게 푼 방법** |
-| `ladder_decompose.py` | 정답 회로 → BuildState 액션열 분해 (정책망 (상태→수) 라벨 공장). 후위순회·n항 좌폴딩, evaluate 라운드트립 검증 |
-| `render_ladder.py` | IR Program → ASCII 래더 다이어그램 (`--] [--` 접점 / `-[TON K3]-` / `-( )-` 코일, 직렬=가로·병렬=세로 레일). 발견 해 눈검수용 |
-| `theory.html` | 이론 배경 정리 (자체완결 HTML, SVG 시각화) — 프로그램 합성·MCTS·정책망 prior·self-play·CEGIS를 우리 코드에 연결. 브라우저로 열기 |
-| `NEXT.md` | 다음 작업 핸드오프 — torch 확인 → `ladder_policy.py`(모방학습) → seq3 최소 검증 |
-| `ladder_benchmark.py` | 난이도 사다리 8과제 + don't-care 마스킹 + 퇴화 가드 + 4방법 비교 러너 |
-| `diag_plateau.py` | 고원 회로의 실패 스캔 진단 (width=2 해소 가능 여부 표시) |
-| `smoke_test.py` | 인프라 자가 점검 (수 초) — 코드 수정 후 필수 실행 |
-| `ladder_simplify.py` | 발견 해 정리 2단 — `simplify_program`(동작 보존: 상수 전파/죽은 rung/불 대수) + `shrink_program`(스펙 보존 greedy ablation) + `polish_program`(표준 절차) |
-| `show_circuits.py` | 레퍼런스 해 + GP 발견 해 + 단순화 결과를 텍스트로 출력 |
-| `plot_timechart.py` | 스펙 타임차트 → 로직 애널라이저 풍 PNG (`charts/`) — 연구일지 자료화 용. **matplotlib 필요** |
+| `ladder/sim.py` | IR v1 + 스캔 평가기 + `simulate()` (다중 스캔) |
+| `ladder/search.py` | `Spec`/`Scenario` + `evaluate()`(일치율·invariant 위반) + 무작위 생성기 + 이중 코일 규칙 |
+| `ladder/mcts.py` | 스택 액션 게임 `BuildState` + UCT/PUCT + `weighted_rollout` |
+| `ladder/gp.py` | 유전 프로그래밍 — rung 단일점 교차 + 변이 5종 |
+| `ladder/simplify.py` | 해 정리 — `simplify_program`(동작 보존) + `shrink_program`(스펙 보존) + `polish_program` |
+| `ladder/decompose.py` | 정답 회로 → BuildState 액션열 분해 (라벨 공장, 라운드트립 검증) |
+| `ladder/policy.py` | featurizer v3.1 (스펙 역할+지연) + 정책망(BC) + numpy 추론 + rollout/prior 어댑터 |
+| `ladder/curriculum.py` | 변형 과제 생성기 — 래치 체인 / 타이머 체인 (canonical 제외) |
+| `ladder/benchmark.py` | 난이도 사다리 8과제 + 4방법 비교 러너 |
+| `ladder/render.py` | IR → ASCII 래더 다이어그램 (발견 해 눈검수) |
+| `experiments/temp_sweep.py` | 롤아웃 온도 진단 (저장 가중치 재사용) |
+| `experiments/exit_loop.py` | ExIt 1회전 — 탐색 발견 해 환류 |
+| `experiments/k4_probe.py` | seq4 (래치 4단) held-out 탐침 |
+| `experiments/tchain_probe.py` | tchain3 (타이머 체인) held-out 탐침 |
+| `experiments/unified_probe.py` | 통합 회귀 — 단일 prior 로 3 held-out 동시 |
+| `tools/show_circuits.py` | ref + 발견 해 + 단순화 결과 텍스트 출력 |
+| `tools/diag_plateau.py` | 고원 회로의 실패 스캔 진단 |
+| `tools/plot_timechart.py` | 스펙 타임차트 PNG (`charts/`) |
 
-실행 (import는 플랫 — **이 폴더 안에서** 실행, 한글 출력은 `PYTHONUTF8=1` 필요):
+실행 (`uv run` 이 ladder/ 를 editable 설치 — 어디서든 import 동작.
+한글 출력 깨지면 `PYTHONUTF8=1`):
 
-```powershell
-$env:PYTHONUTF8 = '1'
-python smoke_test.py                          # 인프라 자가 점검 (수 초, 코드 수정 후 필수)
-python ladder_benchmark.py                    # 전체 8과제 × 4방법 × 3시드
-python ladder_benchmark.py interlock seq2     # 부분 (과제/방법 이름 혼합 가능)
-python ladder_benchmark.py actuator seq3      # 사다리 확장 2과제만
-python show_circuits.py actuator              # 발견 해 → 단순화 → 스펙축소 크기 비교
-python ladder_decompose.py                    # 정답 회로 → 액션열 라벨 (인자 주면 래더 그림까지)
-python render_ladder.py self_hold actuator    # ASCII 래더 다이어그램만
-python diag_plateau.py interlock              # 고원 회로 실패 스캔 진단
-python plot_timechart.py interlock            # 차트 (인자 없으면 전체) — matplotlib 필요
+```bash
+uv run smoke_test.py                        # 코드 수정 후 필수 (수 초)
+uv run python -m ladder.benchmark           # 8과제 × 4방법 × 3시드 (부분: 과제/방법 이름)
+uv run python -m ladder.policy --holdout seq3 --curriculum 16   # 8차 재현
+uv run python -m ladder.decompose           # 라벨 공장 자가 점검
+uv run experiments/unified_probe.py         # 통합 회귀 (누적 증명)
+uv run experiments/k4_probe.py --skip-base  # seq4 재현
+uv run tools/show_circuits.py actuator      # 발견 해 눈검수
+uv run tools/plot_timechart.py interlock    # 타임차트 PNG
 ```
-
-의존성 메모: 코어(시뮬/탐색/GP)는 표준 라이브러리만 사용.
-`plot_timechart.py`만 matplotlib 필요 — backend venv에 직접 설치해서 사용
-(`uv pip install --project backend matplotlib`). 그 경우 backend venv의 python으로
-실행. pyproject/uv.lock은 건드리지 않으므로 git 깨끗 — 단, `uv sync` 시 제거되니
-그때 재설치.
 
 ## 난이도 사다리 8과제
 
