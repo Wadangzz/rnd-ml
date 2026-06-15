@@ -27,14 +27,8 @@ from ladder.benchmark import (
   run_random,
 )
 from ladder.curriculum import make_chain_curriculum, make_chain_task
-from ladder.mcts import BuildState, mcts_search
-from ladder.policy import (
-  build_samples,
-  extract_weights,
-  make_net_rollout,
-  make_prior_fn,
-  train,
-)
+from ladder.parallel import parallel_search
+from ladder.policy import build_samples, extract_weights, train
 from ladder.search import program_size, program_str
 
 BUDGET = 200_000
@@ -53,12 +47,15 @@ def make_seq4():
   )
   # 탐색용 설정 (make_chain_task 는 라벨 전용이라 기본값) — SET/RST 자연형 8 rung
   t.gen_cfg = GenCfg(max_rungs=8, max_depth=4, setrst_p=0.3)
-  t.mcts_kwargs = dict(max_actions=34, max_stack=3, max_rungs=8, allow_setrst=True)
+  # max_actions 42 = 구 EMIT 그래머의 34 + max_rungs(8): OPEN+CLOSE 가 rung 당
+  # 1수 더 들어 동일 도달성 유지하려면 +max_rungs (2026-06-15 베이스라인 등가).
+  t.mcts_kwargs = dict(max_actions=42, max_stack=3, max_rungs=8, allow_setrst=True)
   return t
 
 
 if __name__ == '__main__':
   skip_base = '--skip-base' in sys.argv
+  lenext = '--lenext' in sys.argv  # K=4 변형 제외 = 순수 길이 외삽 시험
   seq4 = make_seq4()
   print(f'seq4 (canonical 4단 체인) — ref 크기 {program_size(seq4.reference)}')
   print(program_str(seq4.reference))
@@ -75,36 +72,28 @@ if __name__ == '__main__':
         stat = f'{found:,}회 발견' if found else f'실패 (acc {best_acc:.3f})'
         print(f'  {name:<7} seed{s}: {stat}', flush=True)
 
-  print('\n=== policy 학습 (8과제 ref + 변형 2단/3단/4단 각 8) ===')
+  mode = 'K<=3 (순수 길이 외삽)' if lenext else 'K<=4 (인스턴스 일반화)'
+  print(f'\n=== policy 학습 — {mode} ===')
   train_tasks = (
     make_tasks()
     + make_chain_curriculum(8, K=2)
     + make_chain_curriculum(8, K=3)
-    + make_chain_curriculum(8, K=4)  # canonical(=seq4) 자동 제외
   )
+  if not lenext:
+    train_tasks += make_chain_curriculum(8, K=4)  # canonical(=seq4) 자동 제외
   samples, _ = build_samples(train_tasks)
   print(f'라벨 {len(samples)}')
   model, dev = train(samples)
   w = extract_weights(model)
 
-  print(f'\n=== policy 측정 — seq4 (예산 {BUDGET:,} × 시드 {SEEDS}) ===')
-  rollout = make_net_rollout(w)
-  prior = make_prior_fn(w)
-  for name, kw in [
-    ('net-rollout', dict(rollout_policy=rollout)),
-    ('puct+net', dict(rollout_policy=rollout, prior_fn=prior)),
-  ]:
+  print(f'\n=== policy 측정 — seq4 (예산 {BUDGET:,} × 시드 {SEEDS}, 병렬) ===')
+  jobs, labels = [], []
+  for name, use_prior in [('net-rollout', False), ('puct+net', True)]:
     for s in SEEDS:
-      ev = mcts_search(
-        seq4.spec,
-        BUDGET,
-        s,
-        state_factory=lambda: BuildState(seq4.spec, **seq4.mcts_kwargs),
-        **kw,
-      )
-      stat = (
-        f'{ev.found_at:,}회 발견' if ev.found_at else f'실패 (acc {ev.best_acc:.3f})'
-      )
-      print(f'  {name:<12} seed{s}: {stat}', flush=True)
-      if ev.found_at and ev.best_prog:
-        print(program_str(ev.best_prog))
+      jobs.append((seq4.spec, seq4.mcts_kwargs, BUDGET, s, w, use_prior))
+      labels.append((name, s))
+  for (name, s), (found, acc, prog) in zip(labels, parallel_search(jobs)):
+    stat = f'{found:,}회 발견' if found else f'실패 (acc {acc:.3f})'
+    print(f'  {name:<12} seed{s}: {stat}', flush=True)
+    if prog:  # 실패해도 최선 회로 출력 — 고원에서 무엇을 못 닫나 진단
+      print(program_str(prog))

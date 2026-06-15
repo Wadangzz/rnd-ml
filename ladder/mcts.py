@@ -12,9 +12,10 @@ ladder_mcts.py — 래더 합성 MCTS (순수 UCT, 신경망 없음)
 [ 핵심 설계: 래더 만들기를 '한 수씩 두는 게임'으로 ]
 
   상태  = 지금까지의 액션 시퀀스 (= 부분 완성 프로그램)
-  액션  = PUSH(dev,mode) : 접점을 스택에 올림
+  액션  = OPEN(coil,op)  : 다음 rung 의 코일 타깃을 먼저 선언
+          PUSH(dev,mode) : 접점을 스택에 올림
           AND / OR       : 스택 위 2개를 묶어 1개로
-          EMIT(coil)     : 스택 top을 꺼내 rung으로 확정
+          CLOSE          : 스택 top(=완성된 body)을 열린 타깃으로 rung 확정
           DONE           : 프로그램 완성 선언
   보상  = 완성된 프로그램의 score() (0~1, 시뮬레이터 기반)
 
@@ -54,7 +55,7 @@ from ladder.sim import (
 
 # ---------- 게임 규칙 (상태/액션) ----------
 
-Action = tuple[Any, ...]  # ('PUSH', dev, mode) / ('TON', p) / ('EMIT', c, op) ...
+Action = tuple[Any, ...]  # ('OPEN', c, op) / ('PUSH', dev, mode) / ('CLOSE',) ...
 
 MAX_ACTIONS = 14  # 한 게임 최대 수 (기본값)
 MAX_STACK = 3  # 스택 깊이 제한 (기본값)
@@ -96,6 +97,10 @@ class BuildState:
         self.n_timers = 0  # 이름 부여 + 개수 제한용
         self.n_pulses = 0
         self.done = False
+        # 열린 rung 의 코일 타깃 (OPEN 으로 선언, CLOSE 로 확정). None=닫힘.
+        # body 조립 중 타깃을 알면 접점을 타깃-상대로 채점 가능 (K-불변).
+        self.current_target: str | None = None
+        self.current_op: str | None = None
 
     def clone(self) -> 'BuildState':
         s = BuildState.__new__(BuildState)
@@ -114,11 +119,30 @@ class BuildState:
         s.n_timers = self.n_timers
         s.n_pulses = self.n_pulses
         s.done = self.done
+        s.current_target = self.current_target
+        s.current_op = self.current_op
         return s
 
     def legal_actions(self) -> list[Action]:
         if self.done or self.n_actions >= self.max_actions:
             return []
+        if self.current_target is None:
+            # --- rung 닫힘 국면: 다음 rung 의 타깃 선언(OPEN) 또는 완성(DONE) ---
+            acts = []
+            # OPEN (allow_setrst면 SET/RST 코일도 — 래치 체인의 자연형)
+            # 이중 코일 금지: 이미 쓴 코일과 충돌하는 OPEN은 액션에서 제외
+            if len(self.rungs) < self.max_rungs:
+                ops = ('OUT', 'SET', 'RST') if self.allow_setrst else ('OUT',)
+                used = coil_usage(self.rungs)
+                for c in self.spec.outputs + self.spec.internals:
+                    for op in ops:
+                        if coil_allowed(used, c, op):
+                            acts.append(('OPEN', c, op))
+            # DONE: 출력 코일이 최소 1개 있을 때만
+            if any(r.coil.device in self.spec.outputs for r in self.rungs):
+                acts.append(('DONE',))
+            return acts
+        # --- rung 열림 국면: body 조립 후 CLOSE 로 확정 ---
         acts = []
         devices = self.spec.inputs + self.spec.internals + self.spec.outputs
         # PUSH
@@ -136,20 +160,9 @@ class BuildState:
                 acts.append(('TON', p))
         if self.stack and self.allow_pulse and self.n_pulses < self.max_pulses:
             acts.append(('PLS',))
-        # EMIT (allow_setrst면 SET/RST 코일도 — 래치 체인의 자연형)
-        # 이중 코일 금지: 이미 쓴 코일과 충돌하는 EMIT은 액션에서 제외
-        if len(self.stack) == 1 and len(self.rungs) < self.max_rungs:
-            ops = ('OUT', 'SET', 'RST') if self.allow_setrst else ('OUT',)
-            used = coil_usage(self.rungs)
-            for c in self.spec.outputs + self.spec.internals:
-                for op in ops:
-                    if coil_allowed(used, c, op):
-                        acts.append(('EMIT', c, op))
-        # DONE: 출력 코일이 최소 1개 있고 스택이 비었을 때만
-        if not self.stack and any(
-            r.coil.device in self.spec.outputs for r in self.rungs
-        ):
-            acts.append(('DONE',))
+        # CLOSE: body 가 1개 노드로 환원됐을 때 열린 타깃으로 rung 확정
+        if len(self.stack) == 1:
+            acts.append(('CLOSE',))
         return acts
 
     def apply(self, act: Action):
@@ -170,9 +183,15 @@ class BuildState:
         elif kind == 'PLS':
             self.stack.append(Pulse(f'P{self.n_pulses}', self.stack.pop()))
             self.n_pulses += 1
-        elif kind == 'EMIT':
-            op = act[2] if len(act) > 2 else 'OUT'
-            self.rungs.append(Rung(Coil(act[1], op), self.stack.pop()))
+        elif kind == 'OPEN':
+            self.current_target = act[1]
+            self.current_op = act[2] if len(act) > 2 else 'OUT'
+        elif kind == 'CLOSE':
+            self.rungs.append(
+                Rung(Coil(self.current_target, self.current_op), self.stack.pop())
+            )
+            self.current_target = None
+            self.current_op = None
         elif kind == 'DONE':
             self.done = True
         self.n_actions += 1
@@ -233,7 +252,8 @@ KIND_WEIGHTS = {
     'OR': 3.0,
     'TON': 2.0,
     'PLS': 2.0,
-    'EMIT': 4.0,
+    'OPEN': 3.0,  # rung 타깃 선언 (구 EMIT 의 시작 절반)
+    'CLOSE': 4.0,  # body 1개로 환원 시 확정 (구 EMIT 의 종료 절반)
     'DONE': 3.0,
 }
 
@@ -341,7 +361,7 @@ def mcts_search(
                     priors = dict(zip(node.untried, probs, strict=True))
                     node.priors = priors
                 # prior 큰 액션부터 트리에 들어옴 (AlphaZero 확장 순서)
-                act = max(node.untried, key=lambda a: priors[a])
+                act = max(node.untried, key=lambda a, p=priors: p[a])
                 node.untried.remove(act)
                 prior = priors[act]
             else:

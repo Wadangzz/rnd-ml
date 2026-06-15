@@ -39,10 +39,11 @@ for t in tasks:
 
 seq2 = next(t for t in tasks if t.name == 'seq2')
 st = BuildState(seq2.spec, **seq2.mcts_kwargs)
-st.apply(('PUSH', 'X0', 'NO'))
-ops = {a[-1] for a in st.legal_actions() if a[0] == 'EMIT'}
-assert ops == {'OUT', 'SET', 'RST'}, f'EMIT ops: {ops}'
-print(f'[EMIT OK] seq2 ops={sorted(ops)}')
+# 새 그래머: rung 닫힘 국면(fresh)에 OPEN(coil, op) 이 합법. SET/RST 는
+# 타깃 선언 시점(OPEN)에 op 로 붙는다 (구 EMIT 의 op 가 앞으로 이동).
+ops = {a[2] for a in st.legal_actions() if a[0] == 'OPEN'}
+assert ops == {'OUT', 'SET', 'RST'}, f'OPEN ops: {ops}'
+print(f'[OPEN OK] seq2 ops={sorted(ops)}')
 
 for t in tasks:
     for m, runner in METHODS:

@@ -82,11 +82,17 @@ def emit_logic(node, out: list[Action]):
 
 
 def program_to_actions(prog: Program) -> list[Action]:
-    """정답 회로 → 정규 액션열 (마지막은 항상 DONE)"""
+    """정답 회로 → 정규 액션열 (마지막은 항상 DONE)
+
+    rung 마다 OPEN(타깃 선언) → body 후위순회 → CLOSE(확정). rung 나열
+    순서는 원본 그대로 유지 (스캔 의미론 보존 — bottom-up 재배열은 의미를
+    깨뜨림, 2026-06-15 실측). 바뀐 건 타깃을 body 전에 선언하는 것뿐.
+    """
     acts: list[Action] = []
     for rung in prog.rungs:
+        acts.append(('OPEN', rung.coil.device, rung.coil.op))
         emit_logic(rung.logic, acts)
-        acts.append(('EMIT', rung.coil.device, rung.coil.op))
+        acts.append(('CLOSE',))
     acts.append(('DONE',))
     return acts
 
@@ -158,12 +164,13 @@ def action_str(a: Action) -> str:
     kind = a[0]
     if kind == 'PUSH':
         return f'PUSH {a[1]}{"/" if a[2] == "NC" else ""}'
-    if kind == 'EMIT':
+    if kind == 'OPEN':
+        dev = a[1]
         op = a[2] if len(a) > 2 else 'OUT'
-        return f'EMIT {a[1]}' + ('' if op == 'OUT' else f' [{op}]')
+        return f'OPEN {dev}' + ('' if op == 'OUT' else f' [{op}]')
     if kind == 'TON':
         return f'TON K{a[1]}'
-    return kind  # AND / OR / PLS / DONE
+    return kind  # AND / OR / PLS / CLOSE / DONE
 
 
 def iter_training_pairs(programs, spec):

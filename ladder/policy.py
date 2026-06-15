@@ -55,12 +55,13 @@ from ladder.simplify import polish_program
 
 # ---------- featurize ----------
 
-KINDS = ['PUSH', 'AND', 'OR', 'TON', 'PLS', 'EMIT', 'DONE']
+KINDS = ['PUSH', 'AND', 'OR', 'TON', 'PLS', 'OPEN', 'CLOSE', 'DONE']
 OPS = ['OUT', 'SET', 'RST']
 
-STATE_DIM = 16
-# kind(7) + role(3) + mode(2) + op(3) + preset(1) + 문맥(5) + 스펙역할(9) = 30
-ACTION_DIM = len(KINDS) + 3 + 2 + 3 + 1 + 5 + 9
+STATE_DIM = 17  # +1: rung 열림(body 조립) 국면 플래그
+# kind(8) + role(3) + mode(2) + op(3) + preset(1) + 문맥(6) + 스펙역할(9) = 32
+# 문맥 6 = c_idx/c_rel/c_coiled/c_isnext/c_instack + c_tgtrel(타깃-상대 rank)
+ACTION_DIM = len(KINDS) + 3 + 2 + 3 + 1 + 6 + 9
 FEAT_DIM = STATE_DIM + ACTION_DIM
 
 
@@ -170,20 +171,25 @@ def spec_roles(spec) -> dict:
 def role_feats(dev: str, roles: dict) -> list[float]:
     """디바이스 1개 → 스펙 역할 특징 9차원 (해당 없으면 0).
 
-    지연 2차원이 모티프 판별자 — 래치(~1) vs 타이머(~2+)."""
+    지연 2차원이 모티프 판별자 — 래치(~1) vs 타이머(~2+).
+
+    rank 3개는 점등 출력 수로 정규화(rank/(n_lit-1)) — 마지막 단이 K
+    무관하게 항상 1.0 이라 길이 외삽이 보간이 됨 (절대 /5.0 은 K=4 의
+    rank=3 이 분포 밖, diag_rank_ood.py 실측). 지연은 OOD 무관이라 /4.0 유지."""
     on_r = roles['on_rank'].get(dev)  # (rank, delay) | None
     off_r = roles['off_rank'].get(dev)
     self_r = roles['out_rank'].get(dev)
+    denom = max(len(roles['out_rank']) - 1, 1)  # n_lit-1 (단일 출력 가드)
     return [
         1.0 if dev in roles['start'] else 0.0,
         1.0 if on_r is not None else 0.0,
-        (on_r[0] if on_r else 0) / 5.0,
+        (on_r[0] if on_r else 0) / denom,
         (on_r[1] if on_r else 0) / 4.0,  # 점등 지연
         1.0 if off_r is not None else 0.0,
-        (off_r[0] if off_r else 0) / 5.0,
+        (off_r[0] if off_r else 0) / denom,
         (off_r[1] if off_r else 0) / 4.0,  # 소등 지연
         1.0 if self_r is not None else 0.0,
-        (self_r or 0) / 5.0,
+        (self_r or 0) / denom,
     ]
 
 
@@ -236,6 +242,14 @@ class Ctx:
             for c in iter_contacts(node):
                 self.stack_devs.add(c.device)
         self.roles = spec_roles(spec)  # v3: 스펙 기능 역할 (id 캐시라 비용 0)
+        # 열린 rung 의 코일 타깃 + 그 점등 rank (OPEN 으로 선언 시 설정). body
+        # 조립 중 접점을 이 타깃 대비 상대 rank 로 채점 → K-불변 (length-ext).
+        self.target = state.current_target
+        self.target_rank = (
+            self.roles['out_rank'].get(self.target)
+            if self.target is not None
+            else None
+        )
 
 
 def featurize_state(state: BuildState, ctx: Ctx) -> list[float]:
@@ -253,7 +267,7 @@ def featurize_state(state: BuildState, ctx: Ctx) -> list[float]:
         state.n_pulses / 2.0,
         state.n_actions / 20.0,
         emitted / n_out,  # 이미 채운 출력 비율
-        1.0 if not state.stack else 0.0,  # 스택 빔 (EMIT/DONE 국면)
+        1.0 if not state.stack else 0.0,  # 스택 빔
         len(spec.inputs) / 5.0,
         len(spec.outputs) / 5.0,
         len(spec.internals) / 5.0,
@@ -264,6 +278,8 @@ def featurize_state(state: BuildState, ctx: Ctx) -> list[float]:
         1.0 if any(c.device in spec.inputs for c in top_contacts) else 0.0,
         1.0 if any(c.device in outs for c in top_contacts) else 0.0,
         1.0 if any(c.mode == 'NC' for c in top_contacts) else 0.0,
+        # rung 열림 국면(타깃 선언됨, body 조립 중) vs 닫힘(OPEN/DONE 고를 차례)
+        1.0 if state.current_target is not None else 0.0,
     ]
 
 
@@ -279,12 +295,13 @@ def featurize_action(state: BuildState, act: Action, ctx: Ctx) -> list[float]:
     preset = 0.0
     # v2 문맥: 인덱스/상대위치/코일기왕/다음출력여부/스택기왕
     c_idx, c_rel, c_coiled, c_isnext, c_instack = 0.0, 0.0, 0.0, 0.0, 0.0
+    c_tgtrel = 0.0  # 관계형: 열린 rung 타깃 대비 dev 의 스펙-rank
     dev = None
     if kind == 'PUSH':
         dev = act[1]
         role[dev_role(spec, dev)] = 1.0
         mode[0 if act[2] == 'NO' else 1] = 1.0
-    elif kind == 'EMIT':
+    elif kind == 'OPEN':
         dev = act[1]
         role[dev_role(spec, dev)] = 1.0
         op[OPS.index(act[2] if len(act) > 2 else 'OUT')] = 1.0
@@ -300,13 +317,21 @@ def featurize_action(state: BuildState, act: Action, ctx: Ctx) -> list[float]:
         if ctx.next_out < n_out and dev == spec.outputs[ctx.next_out]:
             c_isnext = 1.0
         c_instack = 1.0 if dev in ctx.stack_devs else 0.0
+        # 관계형: 열린 타깃이 있고 dev 가 점등 코일이면 타깃 대비 rank 상대값.
+        # 피드백 코일(아래 단) = -1, 자기래치(같은 단) = 0 → K 무관 동일값이라
+        # 길이 외삽이 보간이 됨. 절대 rank(OOD)·빌드DAG깊이(forward-ref라 0)의
+        # 관계형 대체 (2026-06-15 두 프로브로 국소화한 구조 신호).
+        if ctx.target_rank is not None:
+            dr = ctx.roles['out_rank'].get(dev)
+            if dr is not None:
+                c_tgtrel = max(min(dr - ctx.target_rank, 1), -3) / 3.0
         rf = role_feats(dev, ctx.roles)  # v3: 이름이 아니라 역할로 식별
     return (
         v
         + role
         + mode
         + op
-        + [preset, c_idx, c_rel, c_coiled, c_isnext, c_instack]
+        + [preset, c_idx, c_rel, c_coiled, c_isnext, c_instack, c_tgtrel]
         + rf
     )
 
