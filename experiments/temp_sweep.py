@@ -29,12 +29,16 @@ print('온도 스윕 — seq3 net-rollout, seed 0, 예산 200k')
 print('기준: 7차 temp=1.0 → 0.893 / 목표: 3차 0.953 회복 또는 발견')
 print('-' * 50)
 for temp in temps:
-  ev = mcts_search(
-    seq3.spec,
-    200_000,
-    0,
-    state_factory=lambda: BuildState(seq3.spec, **seq3.mcts_kwargs),
-    rollout_policy=make_net_rollout(w, temp=temp),
-  )
-  stat = f'{ev.found_at:,}회 발견' if ev.found_at else f'미발견 best {ev.best_acc:.3f}'
-  print(f'  temp {temp:>4.1f}:  {stat}', flush=True)
+    ev = mcts_search(
+        seq3.spec,
+        200_000,
+        0,
+        state_factory=lambda: BuildState(seq3.spec, **seq3.mcts_kwargs),
+        rollout_policy=make_net_rollout(w, temp=temp),
+    )
+    stat = (
+        f'{ev.found_at:,}회 발견'
+        if ev.found_at
+        else f'미발견 best {ev.best_acc:.3f}'
+    )
+    print(f'  temp {temp:>4.1f}:  {stat}', flush=True)
