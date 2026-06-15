@@ -59,9 +59,10 @@ KINDS = ['PUSH', 'AND', 'OR', 'TON', 'PLS', 'OPEN', 'CLOSE', 'DONE']
 OPS = ['OUT', 'SET', 'RST']
 
 STATE_DIM = 17  # +1: rung 열림(body 조립) 국면 플래그
-# kind(8) + role(3) + mode(2) + op(3) + preset(1) + 문맥(6) + 스펙역할(9) = 32
-# 문맥 6 = c_idx/c_rel/c_coiled/c_isnext/c_instack + c_tgtrel(타깃-상대 rank)
-ACTION_DIM = len(KINDS) + 3 + 2 + 3 + 1 + 6 + 9
+# kind(8) + role(3) + mode(2) + op(3) + preset(1) + 문맥(7) + 스펙역할(9) = 33
+# 문맥 7 = c_idx/c_rel/c_coiled/c_isnext/c_instack + c_tgtrel(타깃-상대 rank)
+#          + c_opengap(최상단 미코일 대비 rank gap, OPEN-선택 상대화)
+ACTION_DIM = len(KINDS) + 3 + 2 + 3 + 1 + 7 + 9
 FEAT_DIM = STATE_DIM + ACTION_DIM
 
 
@@ -250,6 +251,17 @@ class Ctx:
             if self.target is not None
             else None
         )
+        # OPEN-선택용: 아직 안 코일된 출력 중 최고 점등 rank (top-down 빌드가
+        # '다음에 열 꼭대기'). c_opengap = 이 값 - dev rank → 정답 픽 0, K-불변.
+        out_rank = self.roles['out_rank']
+        self.max_uncoiled_rank = max(
+            (
+                out_rank[y]
+                for y in spec.outputs
+                if y not in self.coiled and y in out_rank
+            ),
+            default=None,
+        )
 
 
 def featurize_state(state: BuildState, ctx: Ctx) -> list[float]:
@@ -296,6 +308,7 @@ def featurize_action(state: BuildState, act: Action, ctx: Ctx) -> list[float]:
     # v2 문맥: 인덱스/상대위치/코일기왕/다음출력여부/스택기왕
     c_idx, c_rel, c_coiled, c_isnext, c_instack = 0.0, 0.0, 0.0, 0.0, 0.0
     c_tgtrel = 0.0  # 관계형: 열린 rung 타깃 대비 dev 의 스펙-rank
+    c_opengap = 0.0  # 관계형: 최상단 미코일 대비 rank gap (OPEN-선택)
     dev = None
     if kind == 'PUSH':
         dev = act[1]
@@ -325,13 +338,20 @@ def featurize_action(state: BuildState, act: Action, ctx: Ctx) -> list[float]:
             dr = ctx.roles['out_rank'].get(dev)
             if dr is not None:
                 c_tgtrel = max(min(dr - ctx.target_rank, 1), -3) / 3.0
+        # OPEN-선택 상대 특징: dev 가 출력이면 '최상단 미코일' 대비 rank gap.
+        # top-down 정답(꼭대기 열기) = 0, K 무관. 절대 c_idx/c_rel(seq4 0.6 OOD,
+        # diag_open_ood)의 관계형 대체.
+        if ctx.max_uncoiled_rank is not None:
+            dr2 = ctx.roles['out_rank'].get(dev)
+            if dr2 is not None:
+                c_opengap = min(max(ctx.max_uncoiled_rank - dr2, 0), 3) / 3.0
         rf = role_feats(dev, ctx.roles)  # v3: 이름이 아니라 역할로 식별
     return (
         v
         + role
         + mode
         + op
-        + [preset, c_idx, c_rel, c_coiled, c_isnext, c_instack, c_tgtrel]
+        + [preset, c_idx, c_rel, c_coiled, c_isnext, c_instack, c_tgtrel, c_opengap]
         + rf
     )
 
