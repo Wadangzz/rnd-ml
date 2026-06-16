@@ -28,7 +28,7 @@ import sys
 
 from ladder.benchmark import GenCfg, Task, derive_spec, mask_transition_scans
 from ladder.search import evaluate
-from ladder.sim import And, Coil, Contact, Or, Program, Rung, Timer
+from ladder.sim import And, Coil, Contact, Or, Program, Pulse, Rung, Timer
 
 
 def make_chain_reference(K: int, xs: list, ys: list) -> Program:
@@ -268,6 +268,83 @@ def make_timer_chain_curriculum(
         except AssertionError:
             continue
     return tasks
+
+
+# ---------- 제네릭 모티프 변형 (추출 모티프용) ----------
+#
+# 체인/타이머 커리큘럼은 구조를 손으로 쓴 make_X_reference 가 있다. 추출
+# 모티프는 구조를 미리 알 수 없으니, **역할 정규화된 회로를 템플릿으로
+# 받아** 역할→디바이스 배정만 순열하는 제네릭 변형 생성기. 어떤 추출
+# 모티프(il_parse→abstract)든 동작. 스펙은 abstract.derive_spec(시뮬 기반,
+# 래치 자극 다중입력 시나리오)을 재사용 — 모티프별 손튜닝 불요.
+
+
+def remap_devices(prog: Program, m: dict[str, str]) -> Program:
+  """프로그램의 모든 디바이스 이름을 맵 m 으로 치환 (역할 재배정)."""
+
+  def sub(n):
+    if isinstance(n, Contact):
+      return Contact(m.get(n.device, n.device), n.mode)
+    if isinstance(n, Timer):
+      return Timer(m.get(n.name, n.name), n.preset, sub(n.input))
+    if isinstance(n, Pulse):
+      return Pulse(m.get(n.name, n.name), sub(n.input))
+    return type(n)([sub(a) for a in n.args])
+
+  return Program(
+    [
+      Rung(
+        Coil(m.get(r.coil.device, r.coil.device), r.coil.op, list(r.coil.operands)),
+        sub(r.logic),
+      )
+      for r in prog.rungs
+    ]
+  )
+
+
+def make_motif_curriculum(
+  template: Program, n_variants: int = 12, seed: int = 0, max_pool: int = 5
+) -> list:
+  """역할 정규화 template 의 배정 순열 변형 n개 (canonical=held-out 제외).
+
+  template = abstract_roles 출력(X0../Y0../T0..). 변형 축 = 입력/출력 역할을
+  어느 풀 디바이스에 배정하는가 (+ distractor 풀 크기). 구조는 불변, 배정만.
+  canonical(identity) 배정은 held-out 시험 오염 방지로 항상 제외.
+  """
+  from ladder.abstract import _classify
+  from ladder.abstract import derive_spec as motif_spec
+
+  outputs, inputs, timers = _classify(template)
+  nX, nY = len(inputs), len(outputs)
+  rng = random.Random(seed)
+  tasks, seen, attempts = [], set(), 0
+  while len(tasks) < n_variants:
+    attempts += 1
+    assert attempts < n_variants * 50, '유효 배정 고갈 — 변형 축 점검'
+    n_in = rng.choice(range(nX, max_pool + 1))
+    n_out = rng.choice(range(nY, max(nY + 1, 4)))  # 출력 distractor 허용
+    x_pool = [f'X{i}' for i in range(n_in)]
+    y_pool = [f'Y{i}' for i in range(n_out)]
+    x_assign = rng.sample(x_pool, nX)
+    y_assign = rng.sample(y_pool, nY)
+    if x_assign == inputs and y_assign == outputs:
+      continue  # canonical = held-out 오염
+    key = (tuple(x_assign), tuple(y_assign), n_in, n_out)
+    if key in seen:
+      continue
+    seen.add(key)
+    mapping = {inputs[i]: x_assign[i] for i in range(nX)}
+    mapping.update({outputs[j]: y_assign[j] for j in range(nY)})
+    ref = remap_devices(template, mapping)
+    spec = motif_spec(ref)
+    acc, viol = evaluate(ref, spec)
+    if acc < 1.0 or viol != 0:
+      continue  # 퇴화/불일치 배정 폐기
+    tasks.append(
+      Task(f'motif_v{len(tasks)}', f'모티프 변형 {mapping}', spec, ref,
+           GenCfg(), {})
+    )
+  return tasks
 
 
 # ---------- 자가 점검 ----------

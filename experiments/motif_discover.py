@@ -24,7 +24,7 @@ from ladder.benchmark import (
   run_mcts_w,
   run_random,
 )
-from ladder.curriculum import make_chain_curriculum
+from ladder.curriculum import make_chain_curriculum, make_motif_curriculum
 from ladder.il_parse import il_to_program
 from ladder.metrics import log_run
 from ladder.parallel import parallel_search
@@ -82,10 +82,17 @@ if __name__ == '__main__':
   if skip_prior:
     sys.exit(0)
 
-  print(f'\n=== 학습 prior — 표준 커리큘럼 (8 ref + 체인 K2/3) ===')
+  with_motif = '--no-motif-cur' not in sys.argv
+  motif_n = _arg('--motif-n', 12)
+  label = '8 ref + 체인 K2/3' + (f' + 모티프 변형×{motif_n}' if with_motif else '')
+  print(f'\n=== 학습 prior — {label} ===')
   train_tasks = (
     make_tasks() + make_chain_curriculum(8, K=2) + make_chain_curriculum(8, K=3)
   )
+  if with_motif:
+    # 추출 모티프(=task.reference, 역할 정규화)의 배정 순열 변형. canonical
+    # (held-out 타깃)은 생성기가 제외 → 시험 오염 없음.
+    train_tasks += make_motif_curriculum(task.reference, n_variants=motif_n)
   samples, _ = build_samples(train_tasks)
   print(f'라벨 {len(samples)}')
   model, _ = train(samples)
@@ -97,10 +104,11 @@ if __name__ == '__main__':
     for s in SEEDS:
       jobs.append((task.spec, task.mcts_kwargs, budget, s, w, use_prior))
       labels.append((name, s))
+  prior_note = 'motif_cur' if with_motif else 'chains_only'
   for (name, s), (found, acc, prog) in zip(labels, parallel_search(jobs)):
     stat = f'{found:,}회 발견' if found else f'실패 (acc {acc:.3f})'
     print(f'  {name:<12} seed{s}: {stat}', flush=True)
     log_run('motif_actuator', name, s, found, acc, ref_size=ref_sz,
-            prog_size=program_size(prog) if prog else None, note='extracted')
+            prog_size=program_size(prog) if prog else None, note=prior_note)
     if prog and found:
       print(program_str(prog))
