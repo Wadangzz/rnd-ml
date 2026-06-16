@@ -16,6 +16,8 @@
     추출 모티프를 커리큘럼/발견 시험에 넣기 위한 최소 스펙.
 """
 
+import random
+
 from ladder.il_parse import is_compare_device
 from ladder.search import Scenario, Spec
 from ladder.sim import (
@@ -100,10 +102,17 @@ def abstract_roles(prog: Program) -> tuple[Program, dict[str, str]]:
   return Program(rungs), role
 
 
-def _input_patterns(inputs: list[str], n_scans: int) -> list[list[dict]]:
-  """입력별 펄스(0→1→0) + 전체 ON + 전체 OFF 패턴 — 각 입력 자극."""
+def _input_patterns(
+  inputs: list[str], n_scans: int, n_random: int, seed: int
+) -> list[list[dict]]:
+  """입력 자극 패턴 목록.
+
+  단독 펄스만으론 자기유지(latch)를 자극 못 해 자명한 통과 회로(X1->Y0)가
+  꼼수로 acc 1.0 통과 (실측, 2026-06-16). 다중 입력 무작위 트레이스를 더해
+  "한 입력으로 set 후 해제했는데 다른 hold 조건이 유지" 같은 조합을 만들어
+  래치를 드러낸다 (과소명세 방지)."""
   patterns = []
-  # 각 입력 단독 펄스 (래치/엣지 자극)
+  # 각 입력 단독 펄스 (엣지/passthrough 자극)
   for k in inputs:
     trace = []
     for s in range(n_scans):
@@ -112,14 +121,27 @@ def _input_patterns(inputs: list[str], n_scans: int) -> list[list[dict]]:
   # 전체 ON 유지 / 전체 OFF
   patterns.append([{i: 1 for i in inputs} for _ in range(n_scans)])
   patterns.append([{i: 0 for i in inputs} for _ in range(n_scans)])
+  # 다중 입력 무작위 토글 트레이스 (래치/조합 자극 — 핵심)
+  rng = random.Random(seed)
+  for _ in range(n_random):
+    cur = {i: 0 for i in inputs}
+    trace = []
+    for _s in range(n_scans):
+      for i in inputs:
+        if rng.random() < 0.4:
+          cur[i] ^= 1
+      trace.append(dict(cur))
+    patterns.append(trace)
   return patterns
 
 
-def derive_spec(prog: Program, n_scans: int = 6) -> Spec:
+def derive_spec(
+  prog: Program, n_scans: int = 8, n_random: int = 10, seed: int = 0
+) -> Spec:
   """역할 정규화 prog 를 레퍼런스로 시뮬 → 스펙 (입력 자극별 기대 출력).
 
-  특수 릴레이(SM*)는 상수 ON 으로 매 스캔 주입 (production 의미). 추출
-  모티프가 커리큘럼/발견 시험에 들어갈 최소 스펙 — 레퍼런스는 정의상 통과.
+  특수 릴레이(SM*)는 상수 ON 으로 매 스캔 주입 (production 의미). 단독 펄스 +
+  전체 ON/OFF + 다중 입력 무작위(래치 자극) 시나리오. 레퍼런스는 정의상 통과.
   """
   outputs, inputs, _ = _classify(prog)
   specials = sorted(
@@ -132,7 +154,7 @@ def derive_spec(prog: Program, n_scans: int = 6) -> Spec:
   )
 
   scenarios = []
-  for pat in _input_patterns(inputs, n_scans):
+  for pat in _input_patterns(inputs, n_scans, n_random, seed):
     trace = [{**step, **{sm: 1 for sm in specials}} for step in pat]
     expected = simulate(prog, trace, outputs)
     scenarios.append(Scenario(input_trace=trace, expected=expected))
