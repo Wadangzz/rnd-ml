@@ -30,7 +30,11 @@ from ladder.sim import And, Coil, Contact, Logic, Or, Program, Pulse, Rung, Time
 # 보존 (조건 motif 는 그대로, 우변 operand 만 기록. 시뮬레이션엔 inert).
 _DATA_OPS = {'MOV', 'MOVP', 'DMOV', 'DMOVP', 'BMOV', 'FMOV', 'INC', 'DEC', 'ADD',
              'SUB', 'MUL', 'DIV'}
-_NOP_OPS = {'END', 'MEP', 'MEF', 'INV', 'NOP'}
+# 구조 무관 — 안전하게 무시.
+_IGNORE_OPS = {'END', 'NOP'}
+# 의미를 바꾸지만 현 IR(Not/edge 노드 없음)에 표현 불가 — skipped 로 정직 집계.
+#   INV=논리 반전, MEP/MEF=상승/하강 엣지 (Pulse 유사)
+_UNREPRESENTABLE_OPS = {'INV', 'MEP', 'MEF'}
 
 # 비교 명령: <LD|AND|OR>[D]<op> + operand 2개. 불값을 만드는 접점이라 Contact
 # 원자로 보존 (operand 를 device 에 인코딩, 시뮬엔 inert). 예: LD= K1 D0 / LDD< A B
@@ -120,37 +124,47 @@ def il_to_program(items: list[tuple]) -> ParseResult:
         node = Pulse(f'P_{dev}', Contact(dev, 'NO'))
       main.append(node)
     elif instr in ('AND', 'ANI', 'ANDP', 'ANDF'):
+      if not main:  # LD 없이 AND — 단편/불완전. 방어.
+        skipped.append(item)
+        continue
       mode = 'NC' if instr == 'ANI' else 'NO'
       main[-1] = _merge(main[-1], Contact(dev, mode), And)
     elif instr in ('OR', 'ORI', 'ORP', 'ORF'):
+      if not main:
+        skipped.append(item)
+        continue
       mode = 'NC' if instr == 'ORI' else 'NO'
       main[-1] = _merge(main[-1], Contact(dev, mode), Or)
-    elif instr == 'ANB':
+    elif instr in ('ANB', 'ORB'):
+      if len(main) < 2:  # 결합 상대 없음 — caller 문맥 필요한 단편. 방어.
+        skipped.append(item)
+        continue
       b, a = main.pop(), main.pop()
-      main.append(_merge(a, b, And))
-    elif instr == 'ORB':
-      b, a = main.pop(), main.pop()
-      main.append(_merge(a, b, Or))
+      main.append(_merge(a, b, And if instr == 'ANB' else Or))
     elif instr == 'MPS':
-      aux.append(copy.deepcopy(main[-1]))
+      if main:
+        aux.append(copy.deepcopy(main[-1]))
     elif instr == 'MRD':
-      main[-1] = copy.deepcopy(aux[-1])
+      if aux and main:
+        main[-1] = copy.deepcopy(aux[-1])
     elif instr == 'MPP':
-      main[-1] = aux.pop()
+      if aux and main:
+        main[-1] = aux.pop()
     elif instr in ('OUT', 'SET', 'RST'):
+      cond = main[-1] if main else Contact('SM400', 'NO')  # 빈 스택=상시 ON
       if instr == 'OUT' and _is_timer_coil(ops):
-        timers[dev] = (_preset(ops[1]), main[-1])  # 타이머 코일: 구동+preset
+        timers[dev] = (_preset(ops[1]), cond)  # 타이머 코일: 구동+preset
       else:
-        rungs.append(Rung(Coil(dev, instr), main[-1]))
+        rungs.append(Rung(Coil(dev, instr), cond))
     elif instr in _DATA_OPS:
       # 데이터 액션 (A) — 조건(main top)을 그대로 둔 불투명 코일로 보존.
       # 구동 조건이 없으면(상시 실행) Contact('SM400') 대용 없이 빈 논리 방지.
       cond = main[-1] if main else Contact('SM400', 'NO')
       rungs.append(Rung(Coil(ops[-1], instr, ops), cond))
-    elif instr in _NOP_OPS or instr == 'STMT':
+    elif instr in _IGNORE_OPS or instr == 'STMT':
       pass  # 무시 (구조 무관)
     else:
-      skipped.append(item)  # 미지원 — coverage 에 반영
+      skipped.append(item)  # 데이터 외 미지원(INV/MEP/MEF 등) — coverage 반영
 
   prog = _inline_timers(Program(rungs), timers)
   return ParseResult(program=prog, skipped=skipped, timers=timers)
