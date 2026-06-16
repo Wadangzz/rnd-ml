@@ -20,6 +20,16 @@ import sys
 # 로 잡힌 cwd(=backend) 를 import 경로에 넣어 `app` 패키지를 찾게 한다.
 sys.path.insert(0, os.getcwd())
 
+from app.mitsubishi.export._ladder.create_actuator_ladder import (
+  _build_action_condition_rows,
+  _build_action_lamp_rows,
+  _build_arrival_timeover_rows,
+  _build_auto_condition_rows,
+  _build_departure_timeover_rows,
+  _build_input_rows,
+  _build_interlock_rows,
+  _build_solenoid_output_rows,
+)
 from app.mitsubishi.export._ladder.ladder_util import (
   LadderBlock,
   build_addrs_chain_block,
@@ -74,6 +84,48 @@ cases = {
   ),
   'chain/step_inv': closed(build_step_chain_block(['M_S1', 'M_S2'], 'ANI')),
 }
+
+# ── actuator 8개 섹션 — 실전 멀티-rung 조합 모티프 (1 action 합성 구동) ──
+# 서브함수는 plain dict/list 만 받음 (MemoryLookup 우회). 1 control module,
+# 1 action 으로 구동 → 각 섹션의 코어 모티프 (코일은 함수가 자체 emit).
+_A = {
+  'Input': 'X_in', 'M_Command': 'M_cmd', 'M_Detect': 'M_det',
+  'T_Action_Time': 'T_at', 'D_Action_V': 'D_av', 'M_Int': 'M_int',
+  'M_Auto': 'M_auto', 'L_Action_LFS': 'L_lfs', 'L_Action_LFC': 'L_lfc',
+  'Output': 'Y_out', 'T_Action_FS': 'T_fs', 'T_Action_FC': 'T_fc',
+}
+_acts = [{'id': 'a1'}]
+
+
+def _sec(fn):
+  """섹션 함수를 1-action 으로 구동 → LadderBlock."""
+  lb = LadderBlock()
+  fn(lb)
+  return lb
+
+
+cases.update({
+  'actuator/sensor_input': _sec(
+    lambda lb: _build_input_rows(lb, 'M_simul', 'M_auto_run', [_A])
+  ),
+  'actuator/interlock': _sec(
+    lambda lb: _build_interlock_rows(lb, {}, _acts, [_A])  # 인터락 없음 → SM400
+  ),
+  'actuator/auto_cond': _sec(
+    lambda lb: _build_auto_condition_rows(lb, [], _acts, [_A])  # step 없음
+  ),
+  'actuator/action_cond': _sec(
+    lambda lb: _build_action_condition_rows(lb, 'M_auto_run', 'M_manual', [_A])
+  ),
+  'actuator/solenoid': _sec(lambda lb: _build_solenoid_output_rows(lb, [_A])),
+  'actuator/action_lamp': _sec(lambda lb: _build_action_lamp_rows(lb, [_A])),
+  'actuator/arrival_timeover': _sec(
+    lambda lb: _build_arrival_timeover_rows(lb, [_A])
+  ),
+  'actuator/departure_timeover': _sec(
+    lambda lb: _build_departure_timeover_rows(lb, [_A])
+  ),
+})
 
 out = {name: il_of(lb) for name, lb in cases.items()}
 print(json.dumps(out, ensure_ascii=False, indent=2))  # stdout = JSON
