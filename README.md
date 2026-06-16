@@ -732,6 +732,49 @@ c_tgtrel 은 *접점 읽기*만 K-불변화, *어느 코일을 먼저 열까*(to
 (`policy.py`, c_tgtrel 과 병렬). compile/FEAT_DIM 50/smoke 게이트 통과, **실측 미완
 — 내일 k4_probe `--lenext` 로 Y3 닫히는지 판정.**
 
+### 2026-06-16 — c_opengap 실측: 인코딩 천장 + Y3 붕괴 = 탐색 벽 (길이 외삽 결착)
+
+**측정 (`k4_probe.py --lenext --skip-base`, c_opengap, 200k×3시드):**
+
+| variant | seed0 | seed1 | seed2 | 06-15 baseline |
+|---|---|---|---|---|
+| net-rollout | 0.933 | 0.963 | 0.954 | 0.938 |
+| puct+net | 0.963 | 0.971 | 0.971 | 0.946·0.946·0.971 |
+
+c_opengap 이 puct+net seed0·seed1 을 0.946→0.963/0.971 로 끌어올림 (OPEN-선택
+상대화 작동). 단 **발견 0, Y3 미완.** best 해부: puct+net seed1/2 가 **Y0·Y1·Y2
+전부 ref 정확 일치, 최상단 Y3 만** `X3 -> Y3` (래치/클리어 없는 자명한 코일).
+전이 프런티어가 Y2 까지 완전 정복됐으나 꼭대기 한 단이 안 닫힘.
+
+**진단 1 — Y3 붕괴는 인코딩 OOD 가 아니다 (`diag_y3_body.py`, 학습 불필요).**
+Y3 body 정답 액션이 받는 문맥 특징을 학습 support 와 대조. **Y3 body OOD
+인스턴스 2개** (X3 의 r_off_rank 0.667, Y2 의 r_self_rank 0.667) **< 전이에
+성공한 Y2 body 의 OOD 6개.** 의심했던 X4(클리어)의 c_idx 0.8 도 support 안
+(`{0,0.2,0.4,0.6,0.8}`) — X4 액션은 OOD 특징 0. **추측(X4 c_idx 상대화 수술)을
+음성으로 기각** — featurizer 추가 수술은 근거 없음 ([[feedback-diagnose-before-surgery]]
+세 번째 보상: 진단이 헛수술을 막음).
+
+**진단 2 — 탐색이 죽어 있다 (`cpuct_sweep.py`, c_opengap prior).** c_uct
+1.0~4.0 × 3시드 전부 0.938~0.971 고원, **발견 0.** 탐색을 더 펼쳐도(c_uct↑)
+`X3 -> Y3` 고원을 못 벗어남 = 06-15 구 그래머 스윕과 동일 결론, 새 그래머에서도
+재확인.
+
+**결착 — 순수 길이 외삽의 벽 = 탐색/분포, 인코딩 아님.**
+- 인코딩(c_tgtrel + c_opengap)은 **할 만큼 했다**: 프런티어 Y1→Y2 전진,
+  Y3 body 특징도 in-support. 인코딩 천장 도달.
+- Y3 붕괴 = **기만적 부분점수 고원** — `X3 -> Y3` 가 정확도를 대부분 벌고
+  래치/클리어 몇 스캔만 손해. 래치 조립은 빌드 중 정확도 골짜기를 통과해야
+  하는데 MCTS value backup 이 그 비용을 안 치름. c_uct 스윕 무효 = 탐색측 소진.
+- **남은 레버 둘:** ① value network / reward shaping (부분점수 골짜기 탈출 =
+  진짜 RL 본체) ② **변형 공급 (K=4 커리큘럼) — 이미 즉시 발견 검증됨**(8차).
+  순수 길이 외삽(K=4 데이터 0)은 둘 다 없이는 미해결로 **확정·박제.**
+
+**인프라 — 성능 지표 누적 기록 (`ladder/metrics.py` + `tools/plot_metrics.py`).**
+append-only JSONL(`metrics/history.jsonl`) + 실험별 누적 궤적 차트(시드 평균
+best_acc 선 + min/max 밴드 + 발견 ★ 마커, Noto Sans CJK KR). k4_probe/cpuct_sweep
+에 자동 기록 통합 (로깅 실패가 비싼 탐색 결과 안 날리게 try 방어). 21 레코드
+박제 (seq4_lenext 6 + seq4_cpuct 15).
+
 ## 핵심 교훈 누적
 
 1. **문제의 절반은 스펙 언어 설계.** 과잉명세(don't-care로 해소) ↔ 과소명세
@@ -759,12 +802,19 @@ c_tgtrel 은 *접점 읽기*만 K-불변화, *어느 코일을 먼저 열까*(to
     편향 (라벨 양이 아니라 분포가 관건)
   - [ ] 최소 검증 — reference+GP 해 모방학습 정책망 → PUCT(`ucb1`→prior 가중)
     에 꽂아 seq3에서 mcts_w 추월하나 확인
-- [ ] **표현측(관계형 인코딩) — 길이 외삽** (2026-06-15 진행 중)
+- [x] ~~**표현측(관계형 인코딩) — 길이 외삽**~~ (2026-06-15~16 결착)
   - [x] 무브 그래머 OPEN/CLOSE + 타깃-상대 rank(`c_tgtrel`) — seq4 전이 프런티어
     Y1→Y2 전진, puct+net 0.954→0.971 (Y2 정확 전이). 표현 가설 지지
-  - [ ] **`c_opengap`(OPEN-선택 상대화) 실측 — 내일.** 게이트(compile/smoke)
-    통과. `uv run experiments/k4_probe.py --lenext --skip-base` 로 Y3 닫히는지
-    판정. baseline 대조: net-rollout 0.938 / puct+net 0.946·0.946·0.971
-  - [ ] role_rank 중간 tier OOD({0.333,0.667}) — B 정규화 부작용, 필요 시 처방
+  - [x] `c_opengap`(OPEN-선택 상대화) 실측 — puct+net 0.963/0.971/0.971,
+    Y0·Y1·Y2 정확, **Y3 만 붕괴, 발견 0.** Y3 body 특징은 in-support
+    (`diag_y3_body.py` — OOD 가 전이 성공한 Y2 body 보다 적음) → 인코딩 OOD
+    아님. c_uct 1.0~4.0 스윕도 전부 고원(`cpuct_sweep.py`) → **탐색 벽 확정.**
+  - **결론: 순수 길이 외삽 = 인코딩 천장 도달 + 탐색/분포 벽. featurizer 추가
+    수술 근거 없음.** 남은 레버 = value network/reward shaping(②) or 변형 공급.
+- [ ] **value network / reward shaping** — 기만적 부분점수 고원(`X3->Y3`) 탈출.
+  "미완성이지만 옳은 방향" 상태를 가치 평가 = 진짜 RL 본체 (ExIt 다회전 동반)
+- [ ] **실전 모티프 (제품 본선, 우선)** — actuator 패밀리 변형 커리큘럼 / 알람 /
+  `manual/create_*` 모티프 조사 → 커리큘럼화. Phase 2 레시피 검증 완료라 ROI 높음
 - [ ] CEGIS 루프 — invariant fuzzing으로 반례 시나리오 자동 추가
 - [ ] 제품 연결 — 타임차트 에디터 UI → Scenario 컴파일 설계
+- [ ] 성능 지표 누적 기록 — `tools/plot_metrics.py` (✅ 도입). 측정마다 자동 박제

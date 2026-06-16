@@ -27,6 +27,7 @@ from ladder.benchmark import (
   run_random,
 )
 from ladder.curriculum import make_chain_curriculum, make_chain_task
+from ladder.metrics import log_run
 from ladder.parallel import parallel_search
 from ladder.policy import build_samples, extract_weights, train
 from ladder.search import program_size, program_str
@@ -92,8 +93,18 @@ if __name__ == '__main__':
     for s in SEEDS:
       jobs.append((seq4.spec, seq4.mcts_kwargs, BUDGET, s, w, use_prior))
       labels.append((name, s))
+  exp = 'seq4_lenext' if lenext else 'seq4_instgen'
+  ref_sz = program_size(seq4.reference)
   for (name, s), (found, acc, prog) in zip(labels, parallel_search(jobs)):
     stat = f'{found:,}회 발견' if found else f'실패 (acc {acc:.3f})'
     print(f'  {name:<12} seed{s}: {stat}', flush=True)
+    try:  # 로깅 실패가 비싼 탐색 결과를 날리지 않도록 방어
+      log_run(
+        exp, name, s, found, acc,
+        ref_size=ref_sz,
+        prog_size=program_size(prog) if prog else None,
+      )
+    except Exception as e:  # noqa: BLE001
+      print(f'  [metrics 기록 실패: {e}]', flush=True)
     if prog:  # 실패해도 최선 회로 출력 — 고원에서 무엇을 못 닫나 진단
       print(program_str(prog))

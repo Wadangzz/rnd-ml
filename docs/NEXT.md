@@ -1,18 +1,25 @@
 # 다음 작업 — 핸드오프
 
-> 작성 2026-06-12 밤 (퇴근 전). 진행 전반은 `README.md` 실험 일지 (06-12 에
-> 정책망 prior 1~8차 + ExIt + K=4 + tchain 전부), 이론은 `theory.html`,
+> 갱신 2026-06-16. 진행 전반은 `README.md` 실험 일지 (06-12 정책망 prior 1~8차
+> + ExIt + K=4 + tchain, 06-15~16 길이 외삽/그래머/탐색 벽), 이론은 `theory.html`,
 > 메모리 스냅샷은 `MEMO.md`.
 
 ## 한 줄 현재 위치
 
-**Phase 2 (학습 prior) 사실상 결착.** held-out 발견 3종 달성 — seq3 (1회),
-seq4 (전 시드 1회), tchain3 (6/6, 두 번째 모티프). 규칙성 성립: "변형
-커리큘럼 공급 → canonical 즉시 발견". prior ≈ 직접 합성기, MCTS 는 검증자.
-ExIt 자기개선 1회전 가동 (사람 라벨 0, 최악 시드 15×).
+**Phase 2 (학습 prior) 결착 + 길이 외삽 트랙 종결.** held-out 발견 3종
+(seq3/seq4/tchain3) + 통합 회귀 9/9. **순수 길이 외삽(K≤3→K=4, K=4 데이터 0)은
+인코딩 천장 + 탐색 벽으로 미해결 확정** (2026-06-16): c_tgtrel+c_opengap 이
+프런티어를 Y2 까지 밀었으나 Y3 만 붕괴, 진단상 인코딩 OOD 아님(`diag_y3_body`)
++ c_uct 스윕 무효(`cpuct_sweep`) = 기만적 부분점수 고원. **남은 길 = value
+network/reward shaping or 변형 공급.** featurizer 추가 수술은 근거 없음.
+
+→ **다음은 길이 외삽을 더 파지 말고 ② 실전 모티프(제품 본선) 또는 value
+network 로 피벗.** 길이 외삽은 변형 공급(인스턴스 일반화)으로 이미 풀리는
+영역이라 실전 ROI 낮음.
 
 환경: WSL `~/rnd-ml` (uv 프로젝트, torch 2.12.0+cu130, RTX 5070 Ti).
 git 정본 여기 — GitHub 원격 연결은 미완 (private repo 생성 + push 인증 필요).
+성능 지표: `tools/plot_metrics.py` (측정마다 `metrics/history.jsonl` 자동 박제).
 
 ## 확정된 레시피 (오늘의 산출)
 

@@ -20,9 +20,10 @@ from k4_probe import make_seq4
 
 from ladder.benchmark import make_tasks
 from ladder.curriculum import make_chain_curriculum
+from ladder.metrics import log_run
 from ladder.parallel import parallel_search
 from ladder.policy import build_samples, extract_weights, train
-from ladder.search import program_str
+from ladder.search import program_size, program_str
 
 BUDGET = 200_000
 SEEDS = (0, 1, 2)
@@ -49,9 +50,19 @@ if __name__ == '__main__':
 
     results = parallel_search(jobs)
 
+    ref_sz = program_size(seq4.reference)
     cell = {}
     for (c, s), (found, acc, prog) in zip(labels, results):
         cell[(c, s)] = f'{found:,}!' if found else f'{acc:.3f}'
+        try:
+            log_run(
+                'seq4_cpuct', f'c{c}', s, found, acc,
+                ref_size=ref_sz,
+                prog_size=program_size(prog) if prog else None,
+                note='c_opengap',
+            )
+        except Exception as e:  # noqa: BLE001
+            print(f'  [metrics 기록 실패: {e}]', flush=True)
         if found:
             print(f'  *** 발견 c_uct={c} seed{s}: {found:,}회 ***')
             print(program_str(prog))
