@@ -68,7 +68,8 @@ Logic = Contact | And | Or | Timer | Pulse
 @dataclass
 class Coil:
     device: str
-    op: str = 'OUT'  # "OUT" | "SET" | "RST"
+    op: str = 'OUT'  # "OUT" | "SET" | "RST" | 데이터 액션("MOV" 등)
+    operands: list[str] = field(default_factory=list)  # 데이터 액션 인자 (MOV src dst)
 
 
 @dataclass

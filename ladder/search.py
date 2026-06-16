@@ -202,8 +202,13 @@ def logic_str(node) -> str:
 def program_str(prog: Program) -> str:
     lines = []
     for r in prog.rungs:
-        op = '' if r.coil.op == 'OUT' else f'{r.coil.op} '
-        lines.append(f'  {logic_str(r.logic)}  ->  {op}{r.coil.device}')
+        c = r.coil
+        if c.operands:  # 데이터 액션 (MOV/DMOV 등) — operands 그대로 표기
+            rhs = f'{c.op} {" ".join(c.operands)}'
+        else:
+            op = '' if c.op == 'OUT' else f'{c.op} '
+            rhs = f'{op}{c.device}'
+        lines.append(f'  {logic_str(r.logic)}  ->  {rhs}')
     return '\n'.join(lines)
 
 

@@ -40,6 +40,22 @@ TIMER_CASE_IL = [
   ('OUT', 'Y0'),
 ]
 
+# (C) 비교 명령 — create_vision_ladder 의 P↔V 핸드셰이크 패턴 (LD= K1 busy / AND=)
+VISION_COMPARE_IL = [
+  ('LD=', 'K1', 'D_busy_v2p'),  # busy 워드 == 1 → 불 원자
+  ('AND=', 'K0', 'D_trigger_p2v'),  # AND 비교
+  ('OUT', 'M_vision_ready'),
+]
+
+# (A) 데이터 액션 — 조건 게이트 후 MOV (vision 위치값 전송 류). 조건 motif 보존.
+DATA_MOVE_IL = [
+  ('LD', 'M_Detect'),
+  ('AND', 'M_vision_ready'),
+  ('MOV', 'D_pos_src', 'D_pos_dst'),  # 데이터 액션 → 불투명 코일
+  ('LD', 'M_Detect'),
+  ('DMOV', 'D_v_src', 'D_v_dst'),
+]
+
 
 def show(title, il):
   print(f'\n=== {title} ===')
@@ -49,7 +65,10 @@ def show(title, il):
   res = il_to_program(il)
   print('\n복원된 R&D IR:')
   print(program_str(res.program))
-  print(f'\ncoverage = {res.coverage:.0%} | skipped = {res.skipped or "없음"}')
+  print(
+    f'\ncoverage = {res.coverage:.0%} | logic_share = {res.logic_share:.0%}'
+    f' | skipped = {res.skipped or "없음"}'
+  )
   if res.timers:
     print(f'timers = {list(res.timers)}')
   return res
@@ -80,3 +99,5 @@ if __name__ == '__main__':
     )
 
   show('타이머 인라인 (OUT T K → LD T)', TIMER_CASE_IL)
+  show('(C) 비교 명령 → 불 원자 (VISION 핸드셰이크)', VISION_COMPARE_IL)
+  show('(A) 데이터 액션 → 불투명 코일 (조건 motif 보존)', DATA_MOVE_IL)

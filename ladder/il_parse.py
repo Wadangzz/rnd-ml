@@ -21,13 +21,25 @@
 """
 
 import copy
+import re
 from dataclasses import dataclass, field
 
 from ladder.sim import And, Coil, Contact, Logic, Or, Program, Pulse, Rung, Timer
 
-# 데이터/미지원 명령 — 불 논리 IR 밖. 스킵하고 coverage 에 집계.
-_DATA_OPS = {'MOV', 'MOVP', 'DMOV', 'DMOVP', 'BMOV', 'FMOV', 'INC', 'DEC'}
+# 데이터 액션 — 불 논리 IR 밖이지만 '조건 → 데이터액션' 구조라 불투명 코일로
+# 보존 (조건 motif 는 그대로, 우변 operand 만 기록. 시뮬레이션엔 inert).
+_DATA_OPS = {'MOV', 'MOVP', 'DMOV', 'DMOVP', 'BMOV', 'FMOV', 'INC', 'DEC', 'ADD',
+             'SUB', 'MUL', 'DIV'}
 _NOP_OPS = {'END', 'MEP', 'MEF', 'INV', 'NOP'}
+
+# 비교 명령: <LD|AND|OR>[D]<op> + operand 2개. 불값을 만드는 접점이라 Contact
+# 원자로 보존 (operand 를 device 에 인코딩, 시뮬엔 inert). 예: LD= K1 D0 / LDD< A B
+_CMP_RE = re.compile(r'^(LD|AND|OR)(D)?(=|<>|<=|>=|<|>)$')
+
+
+def is_compare_device(dev: str) -> bool:
+  """Contact.device 가 비교 원자(`[a op b]`)인지 — 다운스트림 분류용."""
+  return dev.startswith('[') and dev.endswith(']')
 
 
 @dataclass
@@ -38,10 +50,23 @@ class ParseResult:
 
   @property
   def coverage(self) -> float:
-    """emit 된 rung / (rung + 스킵된 데이터 명령) — 1.0 이면 순수 불 논리."""
+    """파싱된 rung / (rung + 진짜 미지원 명령) — 1.0 이면 전부 표현됨."""
     emitted = len(self.program.rungs)
     denom = emitted + len(self.skipped)
     return emitted / denom if denom else 1.0
+
+  @property
+  def logic_share(self) -> float:
+    """제어 논리(OUT/SET/RST) rung 비율 — 커리큘럼 채굴 가치 지표.
+
+    1.0 = 순수 제어 논리(래치/인터로크/시퀀스, 채굴 대상). 낮을수록
+    데이터 핸들링(MOV 등) 위주 = 논리 합성 범위 밖.
+    """
+    rungs = self.program.rungs
+    if not rungs:
+      return 1.0
+    logic = sum(r.coil.op in ('OUT', 'SET', 'RST') for r in rungs)
+    return logic / len(rungs)
 
 
 def _merge(node: Logic, contact: Logic, cls) -> Logic:
@@ -78,6 +103,16 @@ def il_to_program(items: list[tuple]) -> ParseResult:
     ops = list(item[1:])
     dev = ops[0] if ops else None
 
+    cmp_m = _CMP_RE.match(instr)
+    if cmp_m:  # 비교 명령 (C) — 불 원자 Contact 로 보존
+      base, _d, op = cmp_m.groups()
+      atom = Contact(f'[{ops[0]}{op}{ops[1]}]', 'NO')
+      if base == 'LD':
+        main.append(atom)
+      else:
+        main[-1] = _merge(main[-1], atom, And if base == 'AND' else Or)
+      continue
+
     if instr in ('LD', 'LDI', 'LDP', 'LDF'):
       mode = 'NC' if instr == 'LDI' else 'NO'
       node: Logic = Contact(dev, mode)
@@ -108,7 +143,10 @@ def il_to_program(items: list[tuple]) -> ParseResult:
       else:
         rungs.append(Rung(Coil(dev, instr), main[-1]))
     elif instr in _DATA_OPS:
-      skipped.append(item)  # 데이터 명령 — IR 밖
+      # 데이터 액션 (A) — 조건(main top)을 그대로 둔 불투명 코일로 보존.
+      # 구동 조건이 없으면(상시 실행) Contact('SM400') 대용 없이 빈 논리 방지.
+      cond = main[-1] if main else Contact('SM400', 'NO')
+      rungs.append(Rung(Coil(ops[-1], instr, ops), cond))
     elif instr in _NOP_OPS or instr == 'STMT':
       pass  # 무시 (구조 무관)
     else:
